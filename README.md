@@ -14,31 +14,84 @@ Python 3.10+, depends only on `numpy` and the standard library (native Linux `AF
 
 ---
 
-## Contents
+## Project Structure
 
-| Path | What |
-|---|---|
-| [`xm4_optimizer/transport/protocol_mdr.py`](xm4_optimizer/transport/protocol_mdr.py) | Sony MDR v1/v2 framing (`0x3E`/`0x3C`), `0x3D` byte stuffing, modulo-256 checksum |
-| [`xm4_optimizer/transport/protocol_race.py`](xm4_optimizer/transport/protocol_race.py) | Airoha RACE binary framing (`0x05 0x5A`/`0x5B`), opcodes `0x0402` (Page Program), `0x0403` (Page Read), `0x0404` (Erase), `0x0F92` (ATCI Tunnel), bit-reversed CRC-8 Maxim (`0x31`) |
-| [`xm4_optimizer/transport/rfcomm_socket.py`](xm4_optimizer/transport/rfcomm_socket.py) | Native Linux `AF_BLUETOOTH` RFCOMM transport (Channel 11 `Serial MC` & Channel 21 `Airoha_APP`) |
-| [`xm4_optimizer/transport/virtual_device.py`](xm4_optimizer/transport/virtual_device.py) | Full in-memory hardware emulator (128 KB NOR flash + CXD90050 DSP register bank + fault injection) |
-| [`xm4_optimizer/nvdm/peb.py`](xm4_optimizer/nvdm/peb.py) | 4096-byte Physical Erase Block (PEB) header parser (`<IIBBBB`, magic `0x4D44564E` `"NVDM"`) |
-| [`xm4_optimizer/nvdm/item.py`](xm4_optimizer/nvdm/item.py) | 20-byte NVDM Data Item header (`<BBHHBBHBBII`), 16-bit interleaved checksum, 32-bit BKDR hash |
-| [`xm4_optimizer/nvdm/cxd90050.py`](xm4_optimizer/nvdm/cxd90050.py) | Binary packers/unpackers for `CXD90050AlignmentBlock` (108 B), `HowlingPreventionParam` (32 B), `HowlingDetectionParam` (24 B), `OptimizerParam` (40 B) |
-| [`xm4_optimizer/nvdm/parser.py`](xm4_optimizer/nvdm/parser.py) | Full 128 KB NVDM image parser, RFC 1982 sequence resolver, and image serializer |
-| [`xm4_optimizer/dsp/fixed_point.py`](xm4_optimizer/dsp/fixed_point.py) | Q4.28 (`scale = 2^28`) and Q1.31 fixed-point converters with saturation clamping and `<5i` struct packing |
-| [`xm4_optimizer/dsp/biquad.py`](xm4_optimizer/dsp/biquad.py) | 5-coefficient 2nd-order IIR section (`[a1, a2, b0, b1, b2]`), standard vs MAC pre-negated sign normalization, Transposed Direct Form II filter engine |
-| [`xm4_optimizer/dsp/synthesizer.py`](xm4_optimizer/dsp/synthesizer.py) | RBJ Audio EQ Cookbook Low-Shelf, Peaking EQ, and Butterworth Subsonic HPF synthesizer across 48 / 96 / 192 / 768 kHz |
-| [`xm4_optimizer/dsp/stability.py`](xm4_optimizer/dsp/stability.py) | Closed-form Z-plane characteristic root solver, Schur-Cohn / Jury stability triangle validator, Q28 quantization invariance verifier |
-| [`xm4_optimizer/dsp/simulation.py`](xm4_optimizer/dsp/simulation.py) | Vectorized DTFT $H(e^{j\omega})$ evaluator, band attenuation verifier, and ASCII frequency response plotter |
-| [`xm4_optimizer/safety/dry_run.py`](xm4_optimizer/safety/dry_run.py) | Zero-byte dry-run engine (`ReadOnlyTransportGuard`) rendering Q28 hex diffs, flash page offsets, and ASCII curve |
-| [`xm4_optimizer/safety/injector.py`](xm4_optimizer/safety/injector.py) | Staged parameter injector with pre-flight Nyquist gate, in-place NVDM item update, dual ATCI + flash write, and automatic rollback on fault |
-| [`xm4_optimizer/safety/verifier.py`](xm4_optimizer/safety/verifier.py) | Bit-exact readback verifier for NOR flash Partition 6 and `AT+HWPTOOL=COEFGET` DSP registers |
-| [`xm4_optimizer/safety/rollback.py`](xm4_optimizer/safety/rollback.py) | 128 KB Partition 6 backup creator (with `.sha256` sidecar) and 1-command bit-exact rollback engine |
-| [`xm4_optimizer/cli.py`](xm4_optimizer/cli.py) | CLI entry point (`xm4-optimizer` / `python3 -m xm4_optimizer`) |
-| [`docs/HARDWARE_AND_NVDM.md`](docs/HARDWARE_AND_NVDM.md) | Flash map, Partition 6 binary layout, PEB state machine, and CXD90050 struct reference |
-| [`docs/DSP_ACOUSTIC_THEORY.md`](docs/DSP_ACOUSTIC_THEORY.md) | Mathematical derivations, bilinear transform, Q28 error bounds, Schur-Cohn proof, and literature references |
-| [`docs/WIRE_PROTOCOLS.md`](docs/WIRE_PROTOCOLS.md) | Sony MDR v1/v2 (Channel 11) and Airoha RACE / ATCI (Channel 21) wire protocol specifications |
+```text
+xm4_anc_optimizer/
+├── docs/
+│   ├── HARDWARE_AND_NVDM.md        # Flash map, Partition 6 layout, PEB state machine & CXD90050 structs
+│   ├── DSP_ACOUSTIC_THEORY.md      # Bilinear transform, Q28 error bounds, Schur-Cohn stability proofs
+│   └── WIRE_PROTOCOLS.md           # Sony MDR v1/v2 (Ch 11) & Airoha RACE/ATCI (Ch 21) wire specifications
+├── xm4_optimizer/
+│   ├── cli.py                      # CLI entry point (python3 -m xm4_optimizer)
+│   ├── transport/
+│   │   ├── protocol_mdr.py         # Sony MDR v1/v2 framing, escaping, modulo-256 checksums
+│   │   ├── protocol_race.py        # Airoha RACE binary framing, opcodes (0x0402, 0x0403, 0x0F92)
+│   │   ├── rfcomm_socket.py        # Native Linux AF_BLUETOOTH RFCOMM transport (Ch 11 & Ch 21)
+│   │   └── virtual_device.py       # Full in-memory hardware emulator & fault injection engine
+│   ├── nvdm/
+│   │   ├── peb.py                  # 4096-byte Physical Erase Block header parser ("NVDM" magic)
+│   │   ├── item.py                 # 20-byte Data Item header, BKDR hash, 16-bit interleaved checksum
+│   │   ├── cxd90050.py             # Binary serializers for AlignmentBlock (108B), Howling & Optimizer
+│   │   └── parser.py               # 128 KB NVDM log-structured wear-leveling filesystem parser
+│   ├── dsp/
+│   │   ├── fixed_point.py          # 32-bit signed Q4.28 & Q1.31 converters with saturation clamping
+│   │   ├── biquad.py               # 2nd-order IIR biquad section & Transposed Direct Form II engine
+│   │   ├── synthesizer.py          # RBJ Audio EQ Cookbook Low-Shelf, Peaking EQ & Butterworth HPF
+│   │   ├── stability.py            # Schur-Cohn / Jury stability triangle gate & Z-plane root solver
+│   │   └── simulation.py           # Vectorized DTFT H(e^jw) evaluator & ASCII frequency response curve
+│   └── safety/
+│       ├── dry_run.py              # Zero-byte dry-run engine (ReadOnlyTransportGuard) & diff renderer
+│       ├── injector.py             # Staged parameter injector with auto-rollback on fault
+│       ├── verifier.py             # Bit-exact readback verifier for NOR flash & live DSP registers
+│       └── rollback.py             # 128 KB Partition 6 backup engine with SHA-256 sidecar
+└── tests/                          # 404 unit & integration tests (wire protocols, fuzzing, stability)
+```
+
+---
+
+## Quickstart
+
+Get up and running in under 60 seconds:
+
+### 1. Requirements & Setup
+Requires Python 3.10+ on Linux with standard Bluetooth tools:
+```sh
+# Clone & enter directory
+git clone https://github.com/randward/xm4-anc-optimizer.git
+cd xm4-anc-optimizer
+
+# Install dependencies (only numpy is required)
+pip install numpy
+```
+
+### 2. Zero-Byte Dry Run (Safe Test)
+Simulate the Q4.28 filter synthesis, pole stability check, and frequency response without touching hardware:
+```sh
+PYTHONPATH=. python3 -m xm4_optimizer --dry-run --target-gain 7.5
+```
+
+### 3. Backup Full Headphone NVDM (Always Do This First)
+Takes a bit-for-bit 128 KB snapshot of Partition 6 over Bluetooth RFCOMM:
+```sh
+PYTHONPATH=. python3 -m xm4_optimizer --mac AC:80:0A:2E:45:80 backup factory_nvdm_backup.bin
+```
+
+### 4. Apply Super* Review + 3D Spatial Audio (Linux EasyEffects)
+For immediate pristine acoustic balance (eliminating 200 Hz bloat and fixing muffled treble):
+```sh
+# Copy preset to EasyEffects output folder
+cp presets/Sony_WF-1000XM4_SuperReview_3D_Spatial.json ~/.var/app/com.github.wwmm.easyeffects/data/easyeffects/output/
+
+# Load preset directly
+flatpak run --command=easyeffects com.github.wwmm.easyeffects -l Sony_WF-1000XM4_SuperReview_3D_Spatial
+```
+
+### 5. Rollback (If Ever Needed)
+Restore the entire 128 KB Partition 6 bit-for-bit back to stock:
+```sh
+PYTHONPATH=. python3 -m xm4_optimizer --mac AC:80:0A:2E:45:80 rollback factory_nvdm_backup.bin
+```
 
 ---
 
