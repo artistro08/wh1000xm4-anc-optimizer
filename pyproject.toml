@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xm4_optimizer"
+version = "0.1.0"
+description = "Sony WH-1000XM4 ANC calibration tool: Airoha NVDM Partition 6 parser, CXD90050 Q28 biquad IIR synthesizer, dry-run simulator, and RACE/ATCI flasher"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Ege", email = "randward@proton.me"}
+]
+dependencies = [
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+xm4-optimizer = "xm4_optimizer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["xm4_optimizer*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
