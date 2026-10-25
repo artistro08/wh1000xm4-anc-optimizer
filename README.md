@@ -55,12 +55,25 @@ xm4_anc_optimizer/
 
 ---
 
-## Quickstart
+## Quickstart & Usage
 
-Get up and running in under 60 seconds:
+> [!CAUTION]
+> **CRITICAL: ALWAYS BACK UP YOUR HEADPHONES BEFORE FLASHING!**
+> 
+> Flashing custom biquad coefficients or modifying firmware writes directly to your headphone's internal SPI NOR flash over Bluetooth RFCOMM. 
+> 
+> * **Always take a bit-for-bit Partition 6 backup first** (Step 2 below). If anything ever goes wrong, you can restore your exact factory calibration in seconds.
+> * **Battery Level:** Ensure your headphones have **at least 50% battery** before flashing.
+> * **Proximity:** Keep the headphones within 1 meter of your Bluetooth adapter to prevent packet loss.
+> * **Do NOT power off or disconnect** while a write or flash operation is active.
+> * **Model Compatibility:** Firmware flashing and NVDM layouts are verified strictly for **Sony WH-1000XM4**. Do NOT attempt to flash an original XM4 firmware onto the XM4C or XM5!
 
-### 1. Requirements & Setup
-Requires Python 3.10+ on Linux with standard Bluetooth tools:
+Get up and running in under 2 minutes:
+
+**1. Requirements & Setup**
+
+Requires Python 3.10+ on Linux with standard Bluetooth tools (`bluez` / `bluetoothctl`):
+
 ```sh
 # Clone & enter directory
 git clone https://github.com/randwardatake/wh1000xm4-anc-optimizer.git
@@ -70,30 +83,56 @@ cd wh1000xm4-anc-optimizer
 pip install numpy
 ```
 
-### 2. Zero-Byte Dry Run (Safe Test)
-Simulate the Q4.28 filter synthesis, pole stability check, and frequency response without touching hardware:
+Find your headphone's Bluetooth MAC address:
+```sh
+bluetoothctl devices | grep -i "WH-1000XM4"
+# Example output: Device AC:80:0A:2E:45:80 WH-1000XM4
+```
+
+**2. Backup Full Headphone Calibration (Mandatory First Step)**
+
+Takes a bit-for-bit 128 KB snapshot of Partition 6 (all factory calibration curves, serials, and DSP blocks) over Bluetooth RFCOMM:
+
+```sh
+PYTHONPATH=. python3 -m xm4_optimizer --mac AC:80:0A:2E:45:80 backup factory_nvdm_backup.bin
+```
+*Keep this `factory_nvdm_backup.bin` file safe. It is your permanent safety net.*
+
+**3. Zero-Byte Dry Run (Safe Test)**
+
+Simulate the Q4.28 filter synthesis, pole stability check, and frequency response without touching or writing a single byte to hardware:
+
 ```sh
 PYTHONPATH=. python3 -m xm4_optimizer --dry-run --target-gain 7.5
 ```
 
-### 3. Backup Full Headphone NVDM (Always Do This First)
-Takes a bit-for-bit 128 KB snapshot of Partition 6 over Bluetooth RFCOMM:
+**4. Standalone Firmware Flashing (Downgrade / Upgrade)**
+
+Flash signed official firmware payloads (e.g. downgrading from v3.0.1 to v2.5.0) directly over Bluetooth RFCOMM:
+
 ```sh
-PYTHONPATH=. python3 -m xm4_optimizer --mac AC:80:0A:2E:45:80 backup factory_nvdm_backup.bin
+python3 tools/flash_firmware.py --mac AC:80:0A:2E:45:80 --firmware path/to/firmware_v2.5.0.bin
 ```
 
-### 4. Apply Super* Review + 3D Spatial Audio (Linux EasyEffects)
-For immediate pristine acoustic balance (eliminating 200 Hz bloat and fixing muffled treble):
-```sh
-# Copy preset to EasyEffects output folder
-cp presets/Sony_WF-1000XM4_SuperReview_3D_Spatial.json ~/.var/app/com.github.wwmm.easyeffects/data/easyeffects/output/
+**5. Acoustic Tuning & Soundstage Expansion Preset**
 
-# Load preset directly
-flatpak run --command=easyeffects com.github.wwmm.easyeffects -l Sony_WF-1000XM4_SuperReview_3D_Spatial
-```
+For immediate pristine acoustic balance (eliminating the bloated 200 Hz bass hump and expanding the stereo soundstage outside your ears):
 
-### 5. Rollback (If Ever Needed)
-Restore the entire 128 KB Partition 6 bit-for-bit back to stock:
+* **Linux (EasyEffects):**
+  ```sh
+  # Copy preset to EasyEffects output folder
+  cp presets/Sony_WF-1000XM4_SuperReview_3D_Spatial.json ~/.var/app/com.github.wwmm.easyeffects/data/easyeffects/output/
+
+  # Load preset directly
+  flatpak run --command=easyeffects com.github.wwmm.easyeffects -l Sony_WF-1000XM4_SuperReview_3D_Spatial
+  ```
+* **Windows (Equalizer APO):**
+  Import `Sony_WF-1000XM4_ANC_on_SuperReview_EQ.txt` into the Equalizer APO Configuration Editor.
+
+**6. Instant Rollback / Factory Restore**
+
+If you ever want to return 100% back to stock, restore your 128 KB Partition 6 backup:
+
 ```sh
 PYTHONPATH=. python3 -m xm4_optimizer --mac AC:80:0A:2E:45:80 rollback factory_nvdm_backup.bin
 ```
