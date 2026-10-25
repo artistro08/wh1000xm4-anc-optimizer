@@ -1,0 +1,162 @@
+"""End-to-End CLI Integration Tests (`xm4_optimizer.cli`)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+import pytest
+
+from xm4_optimizer.cli import CliRunner, cli
+from xm4_optimizer.transport.virtual_device import VirtualXM4Device
+
+
+class TestCliEndToEnd:
+    """Tests all subcommands and flag modes of the `xm4-optimizer` CLI."""
+
+    def test_cli_dry_run_subcommand_and_flag_zero_writes(self) -> None:
+        runner = CliRunner()
+        dev = VirtualXM4Device(populate_defaults=True)
+        dev.connect()
+        pristine = bytes(dev.flash)
+
+        # 1. Subcommand style: `xm4-optimizer dry-run --target-gain 7.5`
+        res1 = runner.invoke(
+            cli,
+            ["--mock", "dry-run", "--target-gain", "7.5"],
+            obj={"transport": dev},
+        )
+        assert res1.exit_code == 0, res1.output
+        assert "0x000DF000" in res1.output
+        assert "0 bytes (DRY-RUN BARRIER ACTIVE)" in res1.output
+        assert dev.write_count == 0
+        assert bytes(dev.flash) == pristine
+
+        # 2. Flag style: `xm4-optimizer --dry-run --target-gain 8.0`
+        res2 = runner.invoke(
+            cli,
+            ["--mock", "--dry-run", "--target-gain", "8.0"],
+            obj={"transport": dev},
+        )
+        assert res2.exit_code == 0, res2.output
+        assert "ALIGN_FF_L" in res2.output
+        assert dev.write_count == 0
+        assert bytes(dev.flash) == pristine
+
+    def test_cli_full_lifecycle_backup_parse_inject_verify_rollback(
+        self, tmp_path: Path
+    ) -> None:
+        runner = CliRunner()
+        dev = VirtualXM4Device(populate_defaults=True)
+        dev.connect()
+        pristine_flash = bytes(dev.flash)
+        backup_path = tmp_path / "factory_nvdm.bin"
+
+        # Step 1: Backup
+        res_backup = runner.invoke(
+            cli,
+            ["--mock", "backup", str(backup_path)],
+            obj={"transport": dev},
+        )
+        assert res_backup.exit_code == 0, res_backup.output
+        assert backup_path.exists()
+        assert backup_path.read_bytes() == pristine_flash
+
+        # Step 2: Parse
+        res_parse = runner.invoke(
+            cli,
+            ["--mock", "parse", str(backup_path)],
+            obj={"transport": dev},
+        )
+        assert res_parse.exit_code == 0, res_parse.output
+        assert "DNC/ALIGN_FF_L" in res_parse.output
+        assert "HOWLING_PRE_PARAM" in res_parse.output
+
+        # Step 3: Optimize preview
+        res_opt = runner.invoke(
+            cli,
+            ["--mock", "optimize", "--target-gain", "7.5"],
+            obj={"transport": dev},
+        )
+        assert res_opt.exit_code == 0, res_opt.output
+        assert dev.write_count == 0
+
+        # Step 4: Inject
+        res_inj = runner.invoke(
+            cli,
+            ["--mock", "inject", "--target-gain", "7.5"],
+            obj={"transport": dev},
+        )
+        assert res_inj.exit_code == 0, res_inj.output
+        assert "INJECTION & BIT-EXACT VERIFICATION SUCCEEDED" in res_inj.output
+        assert bytes(dev.flash) != pristine_flash
+
+        # Step 5: Verify
+        res_ver = runner.invoke(
+            cli,
+            ["--mock", "verify", "--target-gain", "7.5"],
+            obj={"transport": dev},
+        )
+        assert res_ver.exit_code == 0, res_ver.output
+        assert "READBACK VERIFICATION PASSED" in res_ver.output
+
+        # Step 6: Rollback
+        res_rb = runner.invoke(
+            cli,
+            ["--mock", "rollback", str(backup_path)],
+            obj={"transport": dev},
+        )
+        assert res_rb.exit_code == 0, res_rb.output
+        assert "ROLLBACK SUCCEEDED" in res_rb.output
+        assert bytes(dev.flash) == pristine_flash
+
+    def test_cli_flag_workflow_inject_and_rollback(self, tmp_path: Path) -> None:
+        runner = CliRunner()
+        dev = VirtualXM4Device(populate_defaults=True)
+        dev.connect()
+        pristine_flash = bytes(dev.flash)
+        backup_path = tmp_path / "flag_backup.bin"
+
+        # Backup via flag
+        r1 = runner.invoke(
+            cli, ["--mock", "--backup", str(backup_path)], obj={"transport": dev}
+        )
+        assert r1.exit_code == 0, r1.output
+
+        # Inject via flag
+        r2 = runner.invoke(
+            cli,
+            ["--mock", "--inject", "--target-gain", "6.5"],
+            obj={"transport": dev},
+        )
+        assert r2.exit_code == 0, r2.output
+        assert bytes(dev.flash) != pristine_flash
+
+        # Verify via flag
+        r3 = runner.invoke(
+            cli,
+            ["--mock", "--verify", "--target-gain", "6.5"],
+            obj={"transport": dev},
+        )
+        assert r3.exit_code == 0, r3.output
+
+        # Rollback via flag
+        r4 = runner.invoke(
+            cli,
+            ["--mock", "--rollback", str(backup_path)],
+            obj={"transport": dev},
+        )
+        assert r4.exit_code == 0, r4.output
+        assert bytes(dev.flash) == pristine_flash
+
+    def test_cli_rejects_out_of_bounds_gain(self) -> None:
+        runner = CliRunner()
+        dev = VirtualXM4Device(populate_defaults=True)
+        dev.connect()
+
+        res = runner.invoke(
+            cli,
+            ["--mock", "inject", "--target-gain", "14.0"],
+            obj={"transport": dev},
+        )
+        assert res.exit_code != 0
+        assert "ERROR" in res.output
+        assert dev.write_count == 0
