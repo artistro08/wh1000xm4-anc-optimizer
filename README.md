@@ -22,6 +22,11 @@ xm4_anc_optimizer/
 │   ├── HARDWARE_AND_NVDM.md        # Flash map, Partition 6 layout, PEB state machine & CXD90050 structs
 │   ├── DSP_ACOUSTIC_THEORY.md      # Bilinear transform, Q28 error bounds, Schur-Cohn stability proofs
 │   └── WIRE_PROTOCOLS.md           # Sony MDR v1/v2 (Ch 11) & Airoha RACE/ATCI (Ch 21) wire specifications
+├── presets/
+│   ├── Sony_WF-1000XM4_SuperReview_3D_Spatial.json # EasyEffects 3D Spatial + Super* Review EQ preset
+│   └── Sony_WF-1000XM4_ANC_on_SuperReview_EQ.txt  # Equalizer APO parametric profile
+├── tools/
+│   └── flash_firmware.py           # Direct Bluetooth RFCOMM flasher for official Sony firmware (.bin)
 ├── xm4_optimizer/
 │   ├── cli.py                      # CLI entry point (python3 -m xm4_optimizer)
 │   ├── transport/
