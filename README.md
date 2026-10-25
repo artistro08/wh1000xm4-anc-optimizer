@@ -292,3 +292,15 @@ The test suite includes **404 tests** covering MDR/RACE wire framing, RFCOMM soc
 ```sh
 pytest -v
 ```
+
+---
+
+## 5. Project Roadmap
+
+| Phase | Milestone | Scope & Architecture | Status |
+|---|---|---|---|
+| **Phase 1** | **ANC Hardware Optimization & Firmware Flashing** | Reverse engineered NVDM Partition 6, QN1 biquad filter calibration, and RFCOMM FOTA flasher (`tools/flash_firmware.py`). | **Completed** |
+| **Phase 2** | **Acoustic Profiling & Soundstage Expansion** | Super* Review target profile, Bauer BS2B crossfeed (700 Hz / 5.0 dB), and 125% M/S lateral soundstage expansion. | **Completed** |
+| **Phase 3** | **Android Companion Service (AutoCallSwitch)** | Sony MDR V2 RFCOMM listener for `unitRemove` / `unitWear` wear detection packets with rootless Android `AudioManager.setCommunicationDevice` call routing to earpiece. | **In Progress** |
+| **Phase 4** | **True 3D Spatial Audio Engine (AeroSpatial Bridge)** | System-wide spatial audio pipeline powered by Valve Steam Audio (Apache 2.0 C-API) + AES69 SOFA HRTF convolution on Linux PipeWire and Android NDK. | **In Progress** |
+
