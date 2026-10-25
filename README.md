@@ -58,8 +58,8 @@ Get up and running in under 60 seconds:
 Requires Python 3.10+ on Linux with standard Bluetooth tools:
 ```sh
 # Clone & enter directory
-git clone https://github.com/randward/xm4-anc-optimizer.git
-cd xm4-anc-optimizer
+git clone https://github.com/randwardatake/wh1000xm4-anc-optimizer.git
+cd wh1000xm4-anc-optimizer
 
 # Install dependencies (only numpy is required)
 pip install numpy
