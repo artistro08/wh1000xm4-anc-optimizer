@@ -32,6 +32,45 @@ NVDM_PARTITION_BASE: int = 0x000DF000
 NVDM_PARTITION_SIZE: int = 0x20000  # 128 KB (512 pages of 256 bytes)
 
 
+def create_rfcomm_socket(bd_addr: str, channel: int, timeout_s: float = DEFAULT_TIMEOUT_S) -> socket.socket:
+    """Creates and connects an RFCOMM socket on Linux.
+
+    Supports native socket.AF_BLUETOOTH if exported by Python, with transparent
+    libc socket(31, 1, 3) fallback for Python environments built without Bluetooth headers.
+    """
+    if hasattr(socket, "AF_BLUETOOTH") and hasattr(socket, "BTPROTO_RFCOMM"):
+        s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+        s.settimeout(timeout_s)
+        s.connect((bd_addr, channel))
+        return s
+
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.socket.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    libc.socket.restype = ctypes.c_int
+    libc.connect.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+    libc.connect.restype = ctypes.c_int
+
+    fd = libc.socket(31, 1, 3)  # AF_BLUETOOTH (31), SOCK_STREAM (1), BTPROTO_RFCOMM (3)
+    if fd < 0:
+        err = ctypes.get_errno()
+        raise OSError(err, f"libc.socket(AF_BLUETOOTH) failed: {err}")
+
+    mac_bytes = bytes.fromhex(bd_addr.replace(":", ""))[::-1]
+    # Linux struct sockaddr_rc { sa_family_t rc_family; bdaddr_t rc_bdaddr; uint8_t rc_channel; uint8_t pad; }
+    addr_rc = struct.pack("<H6sBB", 31, mac_bytes, channel, 0)
+    ret = libc.connect(fd, addr_rc, len(addr_rc))
+    if ret != 0:
+        err = ctypes.get_errno()
+        import os
+        os.close(fd)
+        raise OSError(err, f"Failed to connect to {bd_addr} on RFCOMM ch {channel}: error {err}")
+
+    s = socket.socket(fileno=fd)
+    s.settimeout(timeout_s)
+    return s
+
+
 def find_connected_xm4_mac() -> Optional[str]:
     """Auto-detects connected Sony WH-1000XM4 Bluetooth MAC address via bluetoothctl."""
     import re
@@ -122,16 +161,15 @@ class RfcommSocket:
         self._sock: Optional[socket.socket] = None
 
     def connect(self, retry_count: int = DEFAULT_RETRY_COUNT) -> None:
-        if not hasattr(socket, "AF_BLUETOOTH") or not hasattr(socket, "BTPROTO_RFCOMM"):
-            raise BluetoothConnectionError("Native Linux RFCOMM sockets (AF_BLUETOOTH) are not supported on this platform")
-
         last_error: Optional[Exception] = None
         for attempt in range(retry_count):
             try:
                 self.close()
-                self._sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-                self._sock.settimeout(self.timeout_s)
-                self._sock.connect((self.bd_addr, self.channel))
+                self._sock = create_rfcomm_socket(
+                    bd_addr=self.bd_addr,
+                    channel=self.channel,
+                    timeout_s=self.timeout_s,
+                )
                 return
             except (OSError, TimeoutError) as e:
                 last_error = e

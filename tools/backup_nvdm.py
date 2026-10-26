@@ -27,6 +27,13 @@ import sys
 import time
 from typing import Optional
 
+# Ensure project root is in sys.path
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from xm4_optimizer.transport.rfcomm_socket import create_rfcomm_socket
+
 DEFAULT_MDR_CHANNEL: int = 11
 DEFAULT_RACE_CHANNEL: int = 21
 TOTAL_PEBS: int = 128
@@ -72,10 +79,8 @@ def backup_xm4_nvdm(bd_addr: str, output_path: Path, peb_count: int = TOTAL_PEBS
 
     # 1. MDR Channel 11 Handshake
     print(f"[*] Step 1/3: Connecting to Sony MDR on RFCOMM channel {DEFAULT_MDR_CHANNEL}...")
-    s_mdr = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-    s_mdr.settimeout(5.0)
     try:
-        s_mdr.connect((bd_addr, DEFAULT_MDR_CHANNEL))
+        s_mdr = create_rfcomm_socket(bd_addr, DEFAULT_MDR_CHANNEL, timeout_s=5.0)
         try:
             s_mdr.recv(1024)
         except Exception:
@@ -97,9 +102,7 @@ def backup_xm4_nvdm(bd_addr: str, output_path: Path, peb_count: int = TOTAL_PEBS
     t_start = time.time()
     try:
         print(f"[*] Step 2/3: Connecting to Airoha RACE on RFCOMM channel {DEFAULT_RACE_CHANNEL}...")
-        s_race = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-        s_race.settimeout(4.0)
-        s_race.connect((bd_addr, DEFAULT_RACE_CHANNEL))
+        s_race = create_rfcomm_socket(bd_addr, DEFAULT_RACE_CHANNEL, timeout_s=4.0)
         print("    -> RACE session established. Beginning pipelined PEB transfer...\n")
 
         for peb_idx in range(peb_count):
@@ -175,6 +178,12 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
+        "output",
+        nargs="?",
+        default=None,
+        help="Optional destination path for backup binary file",
+    )
+    parser.add_argument(
         "--mac",
         type=str,
         default=None,
@@ -204,8 +213,9 @@ def main() -> int:
             return 1
         print(f"[*] Detected connected headset: {mac}\n")
 
+    out_dest = Path(args.output) if args.output else args.out
     try:
-        backup_xm4_nvdm(bd_addr=mac, output_path=args.out, peb_count=args.pebs)
+        backup_xm4_nvdm(bd_addr=mac, output_path=out_dest, peb_count=args.pebs)
         return 0
     except Exception as e:
         print(f"\n[!] ERROR during backup: {e}", file=sys.stderr)

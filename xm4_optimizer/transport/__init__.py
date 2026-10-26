@@ -49,6 +49,7 @@ from xm4_optimizer.transport.rfcomm_socket import (
     BluetoothConnectionError,
     BluetoothRfcommTransport,
     BluetoothTimeoutError,
+    create_rfcomm_socket,
     DEFAULT_BACKOFF_FACTOR,
     DEFAULT_MDR_CHANNEL,
     DEFAULT_RACE_CHANNEL,
@@ -73,6 +74,7 @@ __all__ = [
     "RfcommDeviceTransport",
     "RfcommSocket",
     "VirtualXM4Device",
+    "create_rfcomm_socket",
     "read_nvdm_partition",
     "find_connected_xm4_mac",
     # Constants

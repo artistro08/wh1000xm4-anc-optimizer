@@ -74,6 +74,7 @@ from xm4_optimizer.safety.verifier import (
 )
 from xm4_optimizer.transport.rfcomm_socket import (
     BluetoothRfcommTransport,
+    create_rfcomm_socket,
     DeviceTransport,
     NVDM_PARTITION_BASE,
     NVDM_PARTITION_SIZE,
@@ -275,10 +276,9 @@ def _run_rollback_workflow(transport: DeviceTransport, backup_path: Path) -> int
 def _run_anc_workflow(mac: str, mode: str) -> int:
     """Queries or controls ANC modes directly over Bluetooth MDR RFCOMM channel 11."""
     print(f"[*] Connecting to Sony MDR on RFCOMM Channel 11 ({mac})...")
-    s_mdr = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-    s_mdr.settimeout(4.0)
+    s_mdr = None
     try:
-        s_mdr.connect((mac, 11))
+        s_mdr = create_rfcomm_socket(mac, 11, timeout_s=4.0)
         s_mdr.recv(1024)
         s_mdr.sendall(bytes.fromhex("3e010000000000013c"))
 

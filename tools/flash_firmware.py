@@ -14,6 +14,12 @@ import sys
 import threading
 import time
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from xm4_optimizer.transport.rfcomm_socket import create_rfcomm_socket
+
 HEAD = 0x15
 CMD_START = 0x1C08
 CMD_TRANSMIT_INTERVAL = 0x1C1C
@@ -139,9 +145,7 @@ def flash_firmware(bd_addr: str, fw_path: Path) -> bool:
     print(f"Connecting to WH-1000XM4 ({bd_addr})...")
 
     # Connect MDR on Channel 11
-    s_mdr = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-    s_mdr.settimeout(5.0)
-    s_mdr.connect((bd_addr, 11))
+    s_mdr = create_rfcomm_socket(bd_addr, 11, timeout_s=5.0)
     s_mdr.recv(1024)
     s_mdr.sendall(bytes.fromhex("3e010000000000013c"))
 
@@ -157,9 +161,7 @@ def flash_firmware(bd_addr: str, fw_path: Path) -> bool:
     try:
         # Connect RACE on Channel 21
         print("Connecting to RACE service on RFCOMM Channel 21...")
-        s_race = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-        s_race.settimeout(5.0)
-        s_race.connect((bd_addr, 21))
+        s_race = create_rfcomm_socket(bd_addr, 21, timeout_s=5.0)
         race = RaceClient(s_race)
 
         print("Starting FOTA session on hardware...")
