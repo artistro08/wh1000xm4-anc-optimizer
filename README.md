@@ -1,5 +1,11 @@
 # wh1000xm4-anc-optimizer
 
+[![CI](https://github.com/randwardatake/wh1000xm4-anc-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/randwardatake/wh1000xm4-anc-optimizer/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-v0.1.0-blue.svg)](pyproject.toml)
+[![Email](https://img.shields.io/badge/email-randward%40proton.me-6d4aff.svg?logo=protonmail&logoColor=white)](mailto:randward@proton.me)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB.svg?logo=python&logoColor=white)](pyproject.toml)
+
 ### Spatial audio status
 
 The current AeroSpatial work is an **experimental stereo speaker virtualization prototype**: it places left and right channels at two virtual positions using an HRTF. It does not recover separate instruments or height objects from a stereo recording, decode Sony 360 Reality Audio/Dolby Atmos, or provide verified system-wide 3D playback. A Linux PipeWire route to the WH-1000XM4 was tried with Spotify, but listening was unsatisfactory: the user reported muffled sound, the existing EQ no longer being applied, and the image collapsing toward the center. The route bypasses the prior Spotify links, so loss of EasyEffects EQ is consistent with the current routing. The spatial image issue is unresolved; this prototype is not ready for use. See the [Linux notes](aerospatial/pipewire/README.md) and [spatial roadmap](docs/SPATIAL_ROADMAP.md).
