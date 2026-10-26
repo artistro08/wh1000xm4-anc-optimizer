@@ -168,13 +168,24 @@ class PageReadResponse:
     def from_payload(cls, payload: bytes) -> "PageReadResponse":
         if len(payload) < 5:
             raise RaceFramingError(f"Payload too short for PageReadResponse ({len(payload)}B)")
-        return_code, address = struct.unpack("<BI", payload[:5])
+        return_code = payload[0]
         if return_code != 0:
+            address = struct.unpack("<I", payload[1:5])[0] if len(payload) >= 5 else 0
             return cls(return_code=return_code, address=address, data=b"")
-        if len(payload) < 5 + FLASH_PAGE_SIZE:
+
+        # Real Airoha hardware on storage_type=1 returns 8 bytes payload header:
+        # return_code (1B), storage (1B), info/page_count (2B), address (4B) followed by 256B data (264B total)
+        if len(payload) >= 8 + FLASH_PAGE_SIZE:
+            address = struct.unpack("<I", payload[4:8])[0]
+            data = payload[8:8 + FLASH_PAGE_SIZE]
+            return cls(return_code=return_code, address=address, data=data)
+        elif len(payload) >= 5 + FLASH_PAGE_SIZE:
+            # Legacy 5-byte payload header for virtual mock: return_code (1B), address (4B) + 256B data
+            address = struct.unpack("<I", payload[1:5])[0]
+            data = payload[5:5 + FLASH_PAGE_SIZE]
+            return cls(return_code=return_code, address=address, data=data)
+        else:
             raise RaceFramingError(f"Payload too short for PageReadResponse data ({len(payload)}B)")
-        data = payload[5:5 + FLASH_PAGE_SIZE]
-        return cls(return_code=return_code, address=address, data=data)
 
 
 @dataclass(frozen=True)

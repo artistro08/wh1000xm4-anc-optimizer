@@ -1,5 +1,11 @@
 # wh1000xm4-anc-optimizer
 
+### Spatial audio status
+
+The current AeroSpatial work is an **experimental stereo speaker virtualization prototype**: it places left and right channels at two virtual positions using an HRTF. It does not recover separate instruments or height objects from a stereo recording, decode Sony 360 Reality Audio/Dolby Atmos, or provide verified system-wide 3D playback. A Linux PipeWire route to the WH-1000XM4 was tried with Spotify, but listening was unsatisfactory: the user reported muffled sound, the existing EQ no longer being applied, and the image collapsing toward the center. The route bypasses the prior Spotify links, so loss of EasyEffects EQ is consistent with the current routing. The spatial image issue is unresolved; this prototype is not ready for use. See the [Linux notes](aerospatial/pipewire/README.md) and [spatial roadmap](docs/SPATIAL_ROADMAP.md).
+
+Our target for **content-aware 3D playback** is to preserve actual multichannel or object-position information through to the binaural renderer. A stereo-only source can still be spatialized, but its original instrument positions cannot be recovered. We will label those modes separately and will not advertise content-aware 3D support until a source-to-headphones test demonstrates it.
+
 Calibration, NVDM Partition 6 parser, Q28 fixed-point Biquad IIR filter synthesizer, zero-byte dry-run simulator, and safe RACE/ATCI parameter injector for the **Sony WH-1000XM4** (`MT2811` / `AB155x` SoC + `CXD90050` QN1 ANC DSP).
 
 Python 3.10+, depends only on `numpy` and the standard library (native Linux `AF_BLUETOOTH` / `BTPROTO_RFCOMM` sockets).
@@ -25,8 +31,17 @@ xm4_anc_optimizer/
 ├── presets/
 │   ├── Sony_WF-1000XM4_SuperReview_3D_Spatial.json # EasyEffects 3D Spatial + Super* Review EQ preset
 │   └── Sony_WF-1000XM4_ANC_on_SuperReview_EQ.txt  # Equalizer APO parametric profile
+├── aerospatial/
+│   ├── include/                    # C++20 AeroSpatialEngine & PipeWireBridge headers
+│   ├── src/                        # Valve Steam Audio C-API wrapper & PipeWire RT DSP sink
+│   ├── tests/                      # Mathematical IACC, ITD (625 us), ILD & bilateral acoustic tests
+│   └── CMakeLists.txt              # Builds aerospatial-daemon and test_aerospatial
 ├── tools/
-│   └── flash_firmware.py           # Direct Bluetooth RFCOMM flasher for official Sony firmware (.bin)
+│   ├── backup_nvdm.py              # Direct Bluetooth RFCOMM NVDM backup tool (512 KB, MDR handshake)
+│   ├── flash_firmware.py           # Direct Bluetooth RFCOMM flasher for official Sony firmware (.bin)
+│   ├── route_pipewire_app_through_aerospatial.sh # PipeWire spatial routing bridge
+│   ├── run_linux_steam_audio_smoke.sh # Steam Audio validation test runner
+│   └── download_steamaudio.py      # Automated SDK installer for Valve Steam Audio v4.8.1
 ├── xm4_optimizer/
 │   ├── cli.py                      # CLI entry point (python3 -m xm4_optimizer)
 │   ├── transport/
@@ -50,7 +65,7 @@ xm4_anc_optimizer/
 │       ├── injector.py             # Staged parameter injector with auto-rollback on fault
 │       ├── verifier.py             # Bit-exact readback verifier for NOR flash & live DSP registers
 │       └── rollback.py             # 128 KB Partition 6 backup engine with SHA-256 sidecar
-└── tests/                          # 404 unit & integration tests (wire protocols, fuzzing, stability)
+└── tests/                          # 407 unit & integration tests (wire protocols, fuzzing, stability, 3D spatial DSP)
 ```
 
 ---
@@ -256,8 +271,10 @@ If any stage violates $\max |p_k| < 1.0$ (even after Q28 quantization rounding),
 # 1. Zero-byte dry-run simulation (prints Q28 hex diffs, flash offsets, and ASCII curve; writes 0 bytes)
 PYTHONPATH=. python3 -m xm4_optimizer --dry-run --target-gain 7.5
 
-# 2. Backup the full 128 KB NVDM Partition 6 (0x000DF000) from headphones over Bluetooth RFCOMM
-PYTHONPATH=. python3 -m xm4_optimizer --mac AC:80:0A:2E:45:80 backup wh1000xm4_nvdm_backup.bin
+# 2. Backup the full 512 KB NVDM calibration image over Bluetooth RFCOMM (auto-detects MAC)
+python3 tools/backup_nvdm.py
+# (Or specify MAC and custom output manually):
+python3 tools/backup_nvdm.py --mac AC:80:0A:2E:45:80 --out wh1000xm4_nvdm_backup.bin
 
 # 3. Parse and inspect a 128 KB NVDM dump (or read live from the device)
 PYTHONPATH=. python3 -m xm4_optimizer parse wh1000xm4_nvdm_backup.bin
@@ -326,7 +343,7 @@ PYTHONPATH=. python3 -m xm4_optimizer --mac AC:80:0A:2E:45:80 rollback wh1000xm4
 
 ## 4. Running the Test Suite
 
-The test suite includes **404 tests** covering MDR/RACE wire framing, RFCOMM socket stress/fault injection, 128 KB NVDM parser fuzzing, Q28/Q31 fixed-point extremes, adversarial pole stability boundary checks, acoustic response verification, and full CLI lifecycle tests:
+The test suite includes **407 tests** covering MDR/RACE wire framing, RFCOMM socket stress/fault injection, 128 KB NVDM parser fuzzing, Q28/Q31 fixed-point extremes, adversarial pole stability boundary checks, acoustic response verification, and offline AeroSpatial DSP checks:
 
 ```sh
 pytest -v
@@ -340,6 +357,5 @@ pytest -v
 |---|---|---|---|
 | **Phase 1** | **ANC Hardware Optimization & Firmware Flashing** | Reverse engineered NVDM Partition 6, QN1 biquad filter calibration, and RFCOMM FOTA flasher (`tools/flash_firmware.py`). | **Completed** |
 | **Phase 2** | **Acoustic Profiling & Soundstage Expansion** | Super* Review target profile, Bauer BS2B crossfeed (700 Hz / 5.0 dB), and 125% M/S lateral soundstage expansion. | **Completed** |
-| **Phase 3** | **Android Companion Service (AutoCallSwitch)** | Sony MDR V2 RFCOMM listener for `unitRemove` / `unitWear` wear detection packets with rootless Android `AudioManager.setCommunicationDevice` call routing to earpiece. | **In Progress** |
-| **Phase 4** | **True 3D Spatial Audio Engine (AeroSpatial Bridge)** | System-wide spatial audio pipeline powered by Valve Steam Audio (Apache 2.0 C-API) + AES69 SOFA HRTF convolution on Linux PipeWire and Android NDK. | **In Progress** |
-
+| **Phase 3** | **Android Companion Service (Custom Sony Connect)** | Sony MDR V2 RFCOMM listener for `unitRemove` / `unitWear` wear detection packets with rootless Android `AudioManager.setCommunicationDevice` call routing to earpiece. | **Queued (Next Stage)** |
+| **Phase 4** | **Spatial audio research and Linux prototype** | Steam Audio stereo virtual-speaker prototype and per-app PipeWire routing experiment. Spotify audio reached the trial path, but user listening found muffled sound, EQ bypass, and center collapse. Multichannel/object-based input and system-wide playback remain future work. | **Prototype; failed listening acceptance; investigate before use** |

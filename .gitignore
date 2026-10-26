@@ -27,3 +27,4 @@ ENV/
 .agents/
 *.bin
 *.sha256
+third_party/
