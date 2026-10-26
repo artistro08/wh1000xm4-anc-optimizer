@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "xm4_optimizer"
 version = "0.1.0"
-description = "Sony WH-1000XM4 ANC calibration tool: Airoha NVDM Partition 6 parser, CXD90050 Q28 biquad IIR synthesizer, dry-run simulator, and RACE/ATCI flasher"
+description = "Unofficial Sony WH-1000XM4 Bluetooth tools: NVDM backup and parser, official firmware flasher, ANC control, EQ presets and an experimental spatial audio prototype"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = {text = "GPL-3.0-or-later"}
 authors = [
     {name = "Ege", email = "randward@proton.me"}
 ]

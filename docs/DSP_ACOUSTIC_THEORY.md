@@ -2,6 +2,8 @@
 
 This document provides the mathematical derivations and acoustic control-theory foundations behind the Biquad IIR filters synthesized by `xm4_optimizer`.
 
+> **Scope and evidence.** The filter mathematics (RBJ cookbook shelves, Butterworth high-pass, Q4.28 quantization, pole-radius stability checks) is standard and is covered by the test suite. The mapping of these filters onto the headset is **not** established: on a real WH-1000XM4 the `ALIGN_*` items are 8-byte values, not 5-stage biquad blocks, and no ANC change has been measured (see [STATUS.md](STATUS.md) and [HARDWARE_AND_NVDM.md](HARDWARE_AND_NVDM.md)). Statements below about how the WH-1000XM4 uses `ALIGN_FF_*`/`ALIGN_FB_*` describe a model, not verified device behaviour. A stable biquad also does not prove that the whole electro-acoustic loop stays stable.
+
 ---
 
 ## 1. Hybrid ANC Control Loop & Bode's Sensitivity Integral

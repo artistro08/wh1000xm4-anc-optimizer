@@ -28,3 +28,10 @@ ENV/
 *.bin
 *.sha256
 third_party/
+
+# Raw agent / handover notes and personal device dumps never go into the repository
+*_PROMPT.md
+HANDOVER*.md
+REVIEW_*.md
+notes/
+*.local.md

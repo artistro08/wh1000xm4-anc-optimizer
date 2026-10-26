@@ -2,6 +2,8 @@
 
 This document specifies the binary wire framing, byte-stuffing rules, opcodes, and checksums used by `xm4_optimizer` to communicate with the **Sony WH-1000XM4** over Bluetooth Classic RFCOMM.
 
+> **Evidence.** Channels 11 (MDR) and 21 (RACE), RACE page read `0x0403` and the FOTA sequence are **device-verified** by the backup and firmware-flash tools (see [STATUS.md](STATUS.md)). Section 3.4 (ATCI coefficient commands) is **unverified**. Independent public references for these protocols: [Plutoberth/SonyHeadphonesClient](https://github.com/Plutoberth/SonyHeadphonesClient) (MDR) and [auracast-research/race-toolkit](https://github.com/auracast-research/race-toolkit) (RACE).
+
 ---
 
 ## 1. RFCOMM Service Discovery Map (Firmware v3.0.1)
@@ -79,7 +81,7 @@ struct race_header_t {         // <BBHH (6 bytes, little-endian)
 
 | Opcode (`cmd_id`) | Name | Request Payload | Response Payload |
 |---|---|---|---|
-| `0x0403` | `FLASH_PAGE_READ` | `<BBI` (`storage_type=0x00`, `page_shift=0x01`, `uint32_t address`) | `<BI` (`return_code`, `uint32_t address`) + `uint8_t data[256]` |
+| `0x0403` | `FLASH_PAGE_READ` | `<BBI` (`storage_type=0x00`, `page_shift=0x01`, `uint32_t address`) | `<BI` (`return_code`, `uint32_t address`) + `uint8_t data[256]`. Note: the device-tested backup tool takes page data at byte 14 of the full frame (6-byte header + 8 bytes), i.e. 3 bytes later than this layout implies; reconcile before relying on it. |
 | `0x0402` | `FLASH_PAGE_PROGRAM` | `<BBBI` (`storage_type=0x00`, `num_pages=0x01`, `uint8_t fota_crc8`, `uint32_t address`) + `uint8_t data[256]` | `<BI` (`return_code`, `uint32_t address`) |
 | `0x0404` | `FLASH_PARTITION_ERASE` | `<BII` (`storage_type=0x00`, `uint32_t length`, `uint32_t address`) | `<BI` (`return_code`, `uint32_t address`) |
 | `0x0F92` | `ATCI_TUNNEL` | ASCII AT command string terminated with `\r\n` | ASCII AT response (`+HWPTOOL: ...\r\n\r\nOK\r\n`) |
@@ -107,6 +109,8 @@ def compute_fota_checksum(data: bytes) -> int:
 ```
 
 ### 3.4 ATCI DSP Coefficient Commands (`0x0F92`)
+
+> **Unverified.** The strings `AT+HWPTOOL=COEFSET` and `AT+ENVDM` exist in the firmware v3.0.1 image, but the argument format below was never confirmed and it is unknown whether retail firmware accepts ATCI over RACE. Do not rely on these commands.
 
 Live CXD90050 coefficient registers can be staged and queried through the RACE ATCI tunnel:
 - **Stage Single Biquad Section:**
