@@ -172,27 +172,38 @@ def flash_firmware(bd_addr: str, fw_path: Path) -> bool:
             pass
 
         print("Querying partition layout...")
+        # Reply layout: status, partition ID, storage type, u32 address, u32 length (little-endian)
         part_info = race.request(CMD_PARTITION_INFO, bytes([0x00]))
-        storage = part_info[0] if part_info else 1
-        print(f"Target Storage Device ID: {storage}")
+        if len(part_info) < 11:
+            raise RuntimeError(f"Partition info reply too short: {part_info.hex()}")
+        storage = part_info[2]
+        base = int.from_bytes(part_info[3:7], "little")
+        part_len = int.from_bytes(part_info[7:11], "little")
+        print(f"FOTA partition: id={part_info[1]} storage={storage} address=0x{base:08X} length=0x{part_len:X}")
+        if fw_len > part_len:
+            raise RuntimeError(f"Firmware ({fw_len} bytes) does not fit the FOTA partition ({part_len} bytes)")
 
         race.request(CMD_QUERY_STATE, bytes([0x00]))
         race.request(CMD_ACTIVE_FOTA, bytes([0x00]))
+        race.request(CMD_START_TRANSACTION)
+        race.request(CMD_WRITE_STATE, (0x0200).to_bytes(2, "little"))
 
-        fota_tx_payload = bytearray([storage, 0x01, 0x00])
-        fota_tx_payload.extend(fw_len.to_bytes(4, "little"))
-        race.request(CMD_START_TRANSACTION, fota_tx_payload)
-
+        # Erase: storage, u32 block length, u32 absolute address, one 4 KB block per command
         total_blocks = (fw_len + BLOCK_SIZE - 1) // BLOCK_SIZE
         print(f"\nErasing {total_blocks} blocks ({total_blocks * 4} KB) on flash storage...")
         for b_idx in range(total_blocks):
-            b_addr = b_idx * BLOCK_SIZE
-            erase_payload = bytearray([storage, 1])
+            b_addr = base + b_idx * BLOCK_SIZE
+            erase_payload = bytearray([storage])
+            erase_payload.extend(BLOCK_SIZE.to_bytes(4, "little"))
             erase_payload.extend(b_addr.to_bytes(4, "little"))
             race.request(CMD_ERASE, erase_payload, timeout=10.0)
             if (b_idx + 1) % 20 == 0 or b_idx == total_blocks - 1:
                 print(f"  Erased block {b_idx+1}/{total_blocks}")
 
+        race.request(CMD_WRITE_STATE, (0x0201).to_bytes(2, "little"))
+        race.request(CMD_WRITE_STATE, (0x0210).to_bytes(2, "little"))
+
+        # Program: storage, 1 page, crc8, u32 absolute address, 256 data bytes
         total_pages = (fw_len + PAGE_SIZE - 1) // PAGE_SIZE
         print(f"\nFlashing {total_pages:,} pages ({fw_len / 1024:.1f} KB) with hardware CRC validation...")
         t0 = time.time()
@@ -209,7 +220,7 @@ def flash_firmware(bd_addr: str, fw_path: Path) -> bool:
 
             crc = page_crc(chunk)
             prog_payload = bytearray([storage, 1, crc])
-            prog_payload.extend(p_addr.to_bytes(4, "little"))
+            prog_payload.extend((base + p_addr).to_bytes(4, "little"))
             prog_payload.extend(chunk)
 
             for attempt in range(3):

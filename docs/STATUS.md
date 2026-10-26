@@ -56,7 +56,8 @@ Because of these findings, the CLI refuses `inject` and `rollback` on real hardw
 
 | Claim | Level | Evidence / note |
 |---|---|---|
-| Official firmware v2.5.0 can be flashed over Bluetooth with `tools/flash_firmware.py`, downgrading from v3.0.1 | Device-verified | 2026-10-25: 5,452 pages (1,395,504 bytes) programmed, integrity check `0x1C01` passed, commit `0x1C02`, device rebooted. |
+| Official firmware v2.5.0 can be flashed over Bluetooth with `tools/flash_firmware.py`, downgrading from v3.0.1 | Device-verified | 2026-10-25: 5,452 pages (1,395,504 bytes) programmed, integrity check `0x1C01` passed, commit `0x1C02`, device rebooted. 2026-10-26, second unit, Windows 11 with Python's native `AF_BLUETOOTH`: same result after the fix below. |
+| The flasher must erase and program at the partition address the headset reports in `0x1C00`, on the reported storage type | Device-verified | 2026-10-26: a unit on v3.0.1 answered `0x1C00` with partition ID `0x00`, storage `0x01`, address `0x00510000`, length `0x5FF000`, and refused every erase at address 0 on storage 0 with status `0x02`. The earlier flasher read the status byte as the storage type and erased from address 0. It now parses the reply (status, ID, storage, u32 address, u32 length), erases with `storage, u32 0x1000, u32 address` per 4 KB block, programs at absolute addresses, and writes FOTA states `0x0200`/`0x0201`/`0x0210` around erase and program, as the Sony app does. Reply and payload layouts cross-checked against [aaron-p1/fix-whxm4-voice](https://github.com/aaron-p1/fix-whxm4-voice) `docs/upload-protocol.md`. |
 | After the downgrade, ANC sounded stronger and the hiss was gone | User-reported | No measurement. |
 | Sony reduced ANC by 4–6 dB in later firmware | Unverified | No measurement or source. Treat it as a hypothesis. |
 | Brick risk is "none" with official firmware | Unverified | No source. The flasher does not yet check the input file against known hashes (planned). |

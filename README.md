@@ -18,7 +18,7 @@ Every claim in this repository is graded by evidence in **[docs/STATUS.md](docs/
 |---|---|---|
 | Back up the 512 KiB NVDM store over Bluetooth | `python3 tools/backup_nvdm.py` | Device-verified |
 | Parse a dump (all items, checksums, name hashes) | `python3 -m xm4_optimizer parse <dump.bin>` | Device-verified on a real dump |
-| Flash official Sony firmware, e.g. downgrade 3.0.1 → 2.5.0 | `python3 tools/flash_firmware.py --mac <MAC> --firmware <file.bin>` | Device-verified once (2.5.0) |
+| Flash official Sony firmware, e.g. downgrade 3.0.1 → 2.5.0 | `python3 tools/flash_firmware.py --mac <MAC> --firmware <file.bin>` | Device-verified twice (2.5.0) |
 | Read firmware version, battery and ANC mode | `python3 -m xm4_optimizer status` | Device-verified |
 | Switch noise cancelling / ambient / wind / off | `python3 -m xm4_optimizer anc nc\|ambient [--level 1-20] [--voice]\|wind\|off\|status` | Device-verified, with readback |
 | EQ presets for EasyEffects and Equalizer APO | [`presets/`](presets) | Ready to use |

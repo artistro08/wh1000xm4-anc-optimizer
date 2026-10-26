@@ -82,8 +82,9 @@ struct race_header_t {         // <BBHH (6 bytes, little-endian)
 | Opcode (`cmd_id`) | Name | Request Payload | Response Payload |
 |---|---|---|---|
 | `0x0403` | `FLASH_PAGE_READ` | `<BBI` (`storage_type=0x00`, `page_shift=0x01`, `uint32_t address`) | `<BI` (`return_code`, `uint32_t address`) + `uint8_t data[256]`. Note: the device-tested backup tool takes page data at byte 14 of the full frame (6-byte header + 8 bytes), i.e. 3 bytes later than this layout implies; reconcile before relying on it. |
-| `0x0402` | `FLASH_PAGE_PROGRAM` | `<BBBI` (`storage_type=0x00`, `num_pages=0x01`, `uint8_t fota_crc8`, `uint32_t address`) + `uint8_t data[256]` | `<BI` (`return_code`, `uint32_t address`) |
-| `0x0404` | `FLASH_PARTITION_ERASE` | `<BII` (`storage_type=0x00`, `uint32_t length`, `uint32_t address`) | `<BI` (`return_code`, `uint32_t address`) |
+| `0x0402` | `FLASH_PAGE_PROGRAM` | `<BBBI` (`storage_type`, `num_pages=0x01`, `uint8_t fota_crc8`, `uint32_t address`) + `uint8_t data[256]`. For FOTA, `storage_type` and the absolute `address` come from the `0x1C00` reply (device-verified 2026-10-26: storage `0x01`, partition at `0x00510000`). | `<BI` (`return_code`, `uint32_t address`) |
+| `0x0404` | `FLASH_PARTITION_ERASE` | `<BII` (`storage_type`, `uint32_t length=0x1000`, `uint32_t address`), one command per 4 KB block at an absolute address inside the `0x1C00` partition. Erasing at address 0 on storage 0 is refused with status `0x02` (device-verified 2026-10-26). | `<BI` (`return_code`, `uint32_t address`) |
+| `0x1C00` | `FOTA_PARTITION_INFO` | `00` | `status`, `uint8_t partition_id`, `uint8_t storage_type`, `uint32_t address`, `uint32_t length` (little-endian). Device-verified 2026-10-26: `00 00 01 00 00 51 00 00 f0 5f 00`. |
 | `0x0F92` | `ATCI_TUNNEL` | ASCII AT command string terminated with `\r\n` | ASCII AT response (`+HWPTOOL: ...\r\n\r\nOK\r\n`) |
 
 ### 3.3 Airoha FOTA Page Checksum (`fota_crc8`)
