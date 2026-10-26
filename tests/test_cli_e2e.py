@@ -160,3 +160,53 @@ class TestCliEndToEnd:
         assert res.exit_code != 0
         assert "ERROR" in res.output
         assert dev.write_count == 0
+
+    def test_cli_status_subcommand(self) -> None:
+        runner = CliRunner()
+        res = runner.invoke(cli, ["status"])
+        assert res.exit_code == 0
+        assert "Sony WH-1000XM4" in res.output
+        assert "Bluetooth Link" in res.output
+
+    def test_cli_flash_validation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        runner = CliRunner()
+        # Missing argument
+        res1 = runner.invoke(cli, ["flash"])
+        assert res1.exit_code == 1
+        assert "ERROR: flash requires path" in res1.output
+
+        # Simulated flash failure
+        def mock_flash_fail(*args, **kwargs):
+            return False
+        monkeypatch.setattr("xm4_optimizer.cli.flash_firmware", mock_flash_fail)
+        res2 = runner.invoke(cli, ["--mac", "00:11:22:33:44:55", "flash", "fw.bin"])
+        assert res2.exit_code == 1
+
+    def test_cli_anc_validation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        runner = CliRunner()
+        # Simulated RFCOMM connection failure
+        def mock_fail_socket(*args, **kwargs):
+            raise ConnectionRefusedError("Simulated connection error")
+        monkeypatch.setattr("xm4_optimizer.cli.create_rfcomm_socket", mock_fail_socket)
+        res = runner.invoke(cli, ["--mac", "00:11:22:33:44:55", "anc", "status"])
+        assert res.exit_code == 1
+        assert "MDR connection error" in res.output
+
+    def test_cli_parse_file_directly(self, tmp_path: Path) -> None:
+        runner = CliRunner()
+        dev = VirtualXM4Device(populate_defaults=True)
+        dev.connect()
+        img_path = tmp_path / "sample_nvdm.bin"
+        img_path.write_bytes(bytes(dev.flash))
+
+        res = runner.invoke(cli, ["parse", str(img_path)])
+        assert res.exit_code == 0
+        assert "Parsed NVDM Calibration Items" in res.output
+        assert "ALIGN_FF_L" in res.output
+
+    def test_cli_help_displays_unified_commands(self) -> None:
+        runner = CliRunner()
+        res = runner.invoke(cli, ["--help"])
+        assert res.exit_code == 0
+        for cmd in ("backup", "flash", "anc", "status", "parse", "optimize", "dry-run", "inject", "verify", "rollback"):
+            assert cmd in res.output
