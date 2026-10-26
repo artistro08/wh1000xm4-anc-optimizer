@@ -19,7 +19,7 @@ Every claim in this repository is graded by evidence in **[docs/STATUS.md](docs/
 | Back up the 512 KiB NVDM store over Bluetooth | `python3 tools/backup_nvdm.py` | Device-verified |
 | Parse a dump (all items, checksums, name hashes) | `python3 -m xm4_optimizer parse <dump.bin>` | Device-verified on a real dump |
 | Flash official Sony firmware, e.g. downgrade 3.0.1 → 2.5.0 | `python3 tools/flash_firmware.py --mac <MAC> --firmware <file.bin>` | Device-verified once (2.5.0) |
-| Switch noise cancelling / ambient / off | `python3 -m xm4_optimizer anc on\|ambient\|off` | Implemented |
+| Switch noise cancelling / ambient / off | `python3 -m xm4_optimizer anc …` | **Broken:** talks to the wrong RFCOMM service. The correct service was verified on the device; the fix is next ([details](docs/STATUS.md#hardware-access)). |
 | EQ presets for EasyEffects and Equalizer APO | [`presets/`](presets) | Ready to use |
 | ANC filter synthesis and dry-run | `python3 -m xm4_optimizer --mock --dry-run` | Simulation only |
 | `inject` / `verify` / `rollback` of ANC filters | — | **Disabled on hardware.** Their storage model is contradicted by a real dump ([details](docs/STATUS.md#anc-calibration-inject-verify-rollback)). They run with `--mock` only. |

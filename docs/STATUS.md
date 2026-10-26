@@ -21,6 +21,12 @@ Last reviewed: 2026-10-26. This file is the single place where claims about the 
 | NVDM lives in "Partition 6" at flash address `0x000DF000`, size 128 KB | Unverified / partly contradicted | The working tool uses logical NVDM addressing, not a physical flash address, and the store it reads is 512 KiB, not 128 KB. The physical location is unknown. |
 | NVDM item header layout and checksum | Device-verified | The repository parser (`python3 -m xm4_optimizer parse <dump>`) validates the checksum and name hash of all 230 active items in a real dump. The corrected layout is in [HARDWARE_AND_NVDM.md](HARDWARE_AND_NVDM.md). |
 | 16 MB NOR flash, bootloader / FOTA / voice-prompt address map | Unverified | No partition table read has been published. |
+| The Sony control service is UUID `96cc203e-5068-46ad-b32d-e316f5e069ba` with the MDR v1 framing used by [Gadgetbridge](https://codeberg.org/Freeyourgadget/Gadgetbridge) | Device-verified | Live test 2026-10-26: firmware version request returned `"2.5.0"`, battery returned 80%, ambient-sound GET returned the current mode, and SET to ambient (level 10) and back to noise cancelling was confirmed by readback. |
+| Channel 11 (`b9b213ce…`, "Serial MC") is the control channel | **Contradicted** | Live test 2026-10-26: it sends a hello frame and ACKs every frame, but answers no GET request. The backup tool uses it only for the update-mode handshake. |
+| CLI `anc on/ambient/off` and `status` battery/firmware | **Contradicted** | Live test 2026-10-26: `anc ambient` printed success, but a readback over the control service showed the mode unchanged. The CLI sends to channel 11 with message type `0x00`. Fix planned. |
+| `bluetoothctl info` Modalias encodes the firmware version | Partly verified | `usb:v054Cp0D58d0250` on a unit whose MDR firmware string is `2.5.0`. Other versions not checked. |
+| RACE SDK version (`0x0301`) and build version (`0x1E08`) queries | No reply | Live test 2026-10-26 on firmware 2.5.0, after the update-mode handshake: no response, while a page read on the same connection worked. |
+| RACE page-read response layout | Device-verified | 270-byte frame: 6-byte header + 8 bytes (status `0x00`, …, address) + 256 bytes of data. Data starts at byte 14. |
 | Firmware signature is RSA-2048 checked against eFuses | Unverified | No source. The flasher only shows that the device ran an integrity check (`0x1C01`) and accepted an official image. |
 
 ## ANC calibration (`inject`, `verify`, `rollback`)

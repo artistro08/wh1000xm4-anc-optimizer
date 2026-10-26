@@ -2,7 +2,7 @@
 
 This document specifies the binary wire framing, byte-stuffing rules, opcodes, and checksums used by `xm4_optimizer` to communicate with the **Sony WH-1000XM4** over Bluetooth Classic RFCOMM.
 
-> **Evidence.** Channels 11 (MDR) and 21 (RACE), RACE page read `0x0403` and the FOTA sequence are **device-verified** by the backup and firmware-flash tools (see [STATUS.md](STATUS.md)). Section 3.4 (ATCI coefficient commands) is **unverified**. Independent public references for these protocols: [Plutoberth/SonyHeadphonesClient](https://github.com/Plutoberth/SonyHeadphonesClient) (MDR) and [auracast-research/race-toolkit](https://github.com/auracast-research/race-toolkit) (RACE).
+> **Evidence.** Channels 11 (MDR) and 21 (RACE), RACE page read `0x0403` and the FOTA sequence are **device-verified** by the backup and firmware-flash tools (see [STATUS.md](STATUS.md)). Section 3.4 (ATCI coefficient commands) is **unverified**. **Correction (live test 2026-10-26):** channel 11 is not the control channel. It answers no GET requests; the Sony control service is UUID `96cc203e-5068-46ad-b32d-e316f5e069ba`, which uses the same `0x3E … 0x3C` framing with message type `0x0C` and answered firmware version, battery and ambient-sound requests. Find its RFCOMM channel through SDP (for example BlueZ `Device1.ConnectProfile`); do not hard-code it. Independent public references for these protocols: [Plutoberth/SonyHeadphonesClient](https://github.com/Plutoberth/SonyHeadphonesClient) (MDR) and [auracast-research/race-toolkit](https://github.com/auracast-research/race-toolkit) (RACE).
 
 ---
 
