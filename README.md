@@ -19,7 +19,8 @@ Every claim in this repository is graded by evidence in **[docs/STATUS.md](docs/
 | Back up the 512 KiB NVDM store over Bluetooth | `python3 tools/backup_nvdm.py` | Device-verified |
 | Parse a dump (all items, checksums, name hashes) | `python3 -m xm4_optimizer parse <dump.bin>` | Device-verified on a real dump |
 | Flash official Sony firmware, e.g. downgrade 3.0.1 → 2.5.0 | `python3 tools/flash_firmware.py --mac <MAC> --firmware <file.bin>` | Device-verified once (2.5.0) |
-| Switch noise cancelling / ambient / off | `python3 -m xm4_optimizer anc …` | **Broken:** talks to the wrong RFCOMM service. The correct service was verified on the device; the fix is next ([details](docs/STATUS.md#hardware-access)). |
+| Read firmware version, battery and ANC mode | `python3 -m xm4_optimizer status` | Device-verified |
+| Switch noise cancelling / ambient / wind / off | `python3 -m xm4_optimizer anc nc\|ambient [--level 1-20] [--voice]\|wind\|off\|status` | Device-verified, with readback |
 | EQ presets for EasyEffects and Equalizer APO | [`presets/`](presets) | Ready to use |
 | ANC filter synthesis and dry-run | `python3 -m xm4_optimizer --mock --dry-run` | Simulation only |
 | `inject` / `verify` / `rollback` of ANC filters | — | **Disabled on hardware.** Their storage model is contradicted by a real dump ([details](docs/STATUS.md#anc-calibration-inject-verify-rollback)). They run with `--mock` only. |
@@ -114,7 +115,7 @@ xm4_optimizer/   Python package and CLI (python3 -m xm4_optimizer)
 tools/           backup_nvdm.py, flash_firmware.py, Steam Audio download and PipeWire scripts
 aerospatial/     C++ spatial audio prototype (Steam Audio + PipeWire)
 presets/         EQ presets
-tests/           416 Python tests (emulator, parser fuzzing, DSP); C++ tests live in aerospatial/tests
+tests/           427 Python tests (emulator, parser fuzzing, DSP); C++ tests live in aerospatial/tests
 docs/            Documentation
 ```
 

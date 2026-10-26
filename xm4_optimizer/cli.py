@@ -5,7 +5,7 @@ Unofficial CLI for the Sony WH-1000XM4. Evidence levels for each feature: docs/S
    - `xm4-optimizer backup [output.bin]`       : Pull full 512 KB NVDM calibration backup over Bluetooth RFCOMM
    - `xm4-optimizer flash <firmware.bin>`      : Flash official Sony firmware directly over Bluetooth RFCOMM
    - `xm4-optimizer spatial [start|stop|status]`: Control PipeWire EasyEffects + AeroSpatial 3D Audio bridge [EXPERIMENTAL - ACTIVE DEV]
-   - `xm4-optimizer anc [status|on|ambient|off]`: Control ANC modes over Bluetooth MDR protocol (Ch 11)
+   - `xm4-optimizer anc [status|nc|ambient|wind|off]`: Read/set ANC mode over the Sony MDR v1 control service
    - `xm4-optimizer parse [input.bin]`        : Parse 512KB/128KB NVDM calibration dump and CXD90050 items
    - `xm4-optimizer optimize --target-gain 7.5`: Synthesize low-hiss Q4.28 ANC Biquad IIR filter
    - `xm4-optimizer dry-run --target-gain 7.5` : Zero-byte simulation barrier (writes 0 bytes)
@@ -30,9 +30,6 @@ from dataclasses import dataclass
 import io
 import os
 from pathlib import Path
-import re
-import socket
-import struct
 import subprocess
 import sys
 import time
@@ -79,6 +76,12 @@ from xm4_optimizer.transport.rfcomm_socket import (
     NVDM_PARTITION_BASE,
     NVDM_PARTITION_SIZE,
     read_nvdm_partition,
+)
+from xm4_optimizer.transport.sony_control import (
+    AmbientSoundState,
+    AncMode,
+    SonyControlClient,
+    SonyControlError,
 )
 from xm4_optimizer.transport.virtual_device import VirtualXM4Device
 
@@ -273,44 +276,46 @@ def _run_rollback_workflow(transport: DeviceTransport, backup_path: Path) -> int
     return 1
 
 
-def _run_anc_workflow(mac: str, mode: str) -> int:
-    """Queries or controls ANC modes directly over Bluetooth MDR RFCOMM channel 11."""
-    print(f"[*] Connecting to Sony MDR on RFCOMM Channel 11 ({mac})...")
-    s_mdr = None
-    try:
-        s_mdr = create_rfcomm_socket(mac, 11, timeout_s=4.0)
-        s_mdr.recv(1024)
-        s_mdr.sendall(bytes.fromhex("3e010000000000013c"))
+ANC_MODE_ALIASES = {
+    "on": AncMode.NOISE_CANCELLING, "anc": AncMode.NOISE_CANCELLING, "nc": AncMode.NOISE_CANCELLING,
+    "ambient": AncMode.AMBIENT, "asm": AncMode.AMBIENT,
+    "wind": AncMode.WIND,
+    "off": AncMode.OFF,
+}
 
-        mode_clean = mode.lower()
-        if mode_clean in ("on", "anc"):
-            print("Setting Noise Cancelling: ON...")
-            payload = bytes.fromhex("1618010000")
-        elif mode_clean in ("ambient", "asm"):
-            print("Setting Ambient Sound: ON (Level 20)...")
-            payload = bytes.fromhex("1618010114")
-        elif mode_clean in ("off",):
-            print("Setting Noise Cancelling: OFF...")
-            payload = bytes.fromhex("1618000000")
-        else:
-            print(f"Querying ANC / Ambient status...")
-            payload = bytes.fromhex("1617")
 
-        inner = struct.pack(">BBI", 0x00, 0, len(payload)) + payload
-        chk = sum(inner) & 0xFF
-        pkt = bytearray([0x3E]) + inner + bytes([chk, 0x3C])
-        s_mdr.sendall(pkt)
-        resp = s_mdr.recv(1024)
-        print(f"[+] MDR Command executed successfully (Response: {resp[:16].hex()}...)")
-        return 0
-    except Exception as e:
-        print(f"[-] MDR connection error: {e}")
+def _format_ambient(state: AmbientSoundState) -> str:
+    text = {AncMode.NOISE_CANCELLING: "Noise cancelling", AncMode.AMBIENT: "Ambient sound",
+            AncMode.WIND: "Wind noise reduction", AncMode.OFF: "Off"}[state.mode]
+    if state.mode is AncMode.AMBIENT:
+        text += f" (level {state.ambient_level}/20, focus on voice {'on' if state.focus_on_voice else 'off'})"
+    return text
+
+
+def _run_anc_workflow(mac: str, mode: str, level: Optional[int] = None, voice: bool = False) -> int:
+    """Reads or sets the noise cancelling / ambient sound mode over the Sony MDR v1 control service."""
+    mode_clean = mode.lower()
+    if mode_clean != "status" and mode_clean not in ANC_MODE_ALIASES:
+        print(f"ERROR: unknown anc mode '{mode}'. Use status, nc, ambient, wind or off.")
         return 1
-    finally:
-        try:
-            s_mdr.close()
-        except Exception:
-            pass
+    try:
+        with SonyControlClient.connect(mac) as client:
+            current = client.get_ambient_sound()
+            if mode_clean == "status":
+                print(f"ANC mode: {_format_ambient(current)}")
+                return 0
+            target_mode = ANC_MODE_ALIASES[mode_clean]
+            if target_mode is AncMode.AMBIENT:
+                target = AmbientSoundState(target_mode, voice, current.ambient_level if level is None else level)
+            else:
+                # The headset keeps its focus-on-voice flag outside ambient mode; resend the current one.
+                target = AmbientSoundState(target_mode, current.focus_on_voice, current.ambient_level)
+            result = client.set_ambient_sound(target)
+            print(f"ANC mode: {_format_ambient(result)}")
+            return 0 if result.mode is target_mode else 1
+    except (OSError, SonyControlError, ValueError) as e:
+        print(f"ERROR: {e}")
+        return 1
 
 
 def _run_spatial_workflow(
@@ -390,16 +395,24 @@ def _run_status_workflow(mac: Optional[str]) -> int:
     try:
         bt_out = subprocess.check_output(["bluetoothctl", "info", effective_mac or ""], text=True) if effective_mac else ""
         connected = "Connected: yes" in bt_out
-        battery = re.search(r"Battery Percentage:\s+0x[0-9a-fA-F]+\s+\(([0-9]+)\)", bt_out)
-        bat_str = f"{battery.group(1)}%" if battery else "Unknown"
         print(f"  Bluetooth Link        : {'CONNECTED' if connected else 'DISCONNECTED'}")
-        print(f"  Battery Level         : {bat_str}")
     except Exception:
+        connected = False
         print("  Bluetooth Link        : Query failed")
+
+    if connected:
+        try:
+            with SonyControlClient.connect(effective_mac) as client:
+                battery = client.get_battery()
+                print(f"  Firmware Version      : {client.get_firmware_version()}")
+                print(f"  Battery Level         : {battery.level}%{' (charging)' if battery.charging else ''}")
+                print(f"  ANC Mode              : {_format_ambient(client.get_ambient_sound())}")
+        except (OSError, SonyControlError) as e:
+            print(f"  Headset Query         : failed ({e})")
 
     # Spatial audio status (experimental)
     try:
-        pw_out = subprocess.check_output(["pw-link", "-l"], text=True)
+        pw_out = subprocess.check_output(["pw-link", "-l"], text=True, stderr=subprocess.DEVNULL)
         spatial_active = "aerospatial_3d_sink" in pw_out
         print(f"  AeroSpatial 3D Engine : {'ACTIVE (Experimental Prototype)' if spatial_active else 'INACTIVE (Experimental Prototype)'}")
     except Exception:
@@ -445,6 +458,8 @@ ARCHITECTURAL DISTINCTION: FLASHER vs. INJECTOR
     parser.add_argument("--inject", dest="flag_inject", action="store_true", help="[INJECTOR, emulator only] Inject the synthesized filter into the emulated 108B NVDM model.")
     parser.add_argument("--verify", dest="flag_verify", action="store_true", help="Verify bit-exact flash and DSP register readback.")
     parser.add_argument("--rollback", dest="flag_rollback", type=Path, default=None, help="Restore NVDM backup file bit-for-bit.")
+    parser.add_argument("--level", type=int, default=None, help="anc ambient: ambient sound level 1..20.")
+    parser.add_argument("--voice", action="store_true", default=False, help="anc ambient: enable focus on voice.")
     parser.add_argument("--allow-unverified-write", action="store_true", default=False, help="Allow inject/rollback on real hardware even though they are not hardware-validated.")
     parser.add_argument("--target-gain", type=float, default=7.5, help="Target 50-800 Hz boost in dB (+6.0 to +9.0).")
     parser.add_argument("--sample-rate", type=float, default=48000.0, help="DSP sampling rate in Hz.")
@@ -500,7 +515,7 @@ def run_cli(
             print("ERROR: No connected Sony WH-1000XM4 found via Bluetooth.")
             return 1
         mode = subarg or "status"
-        return _run_anc_workflow(mac=effective_mac, mode=mode)
+        return _run_anc_workflow(mac=effective_mac, mode=mode, level=ns.level, voice=ns.voice)
 
     if subcmd == "parse" and subarg is not None:
         return _run_parse_workflow(transport=None, image_path=Path(subarg))

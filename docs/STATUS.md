@@ -23,7 +23,8 @@ Last reviewed: 2026-10-26. This file is the single place where claims about the 
 | 16 MB NOR flash, bootloader / FOTA / voice-prompt address map | Unverified | No partition table read has been published. |
 | The Sony control service is UUID `96cc203e-5068-46ad-b32d-e316f5e069ba` with the MDR v1 framing used by [Gadgetbridge](https://codeberg.org/Freeyourgadget/Gadgetbridge) | Device-verified | Live test 2026-10-26: firmware version request returned `"2.5.0"`, battery returned 80%, ambient-sound GET returned the current mode, and SET to ambient (level 10) and back to noise cancelling was confirmed by readback. |
 | Channel 11 (`b9b213ce…`, "Serial MC") is the control channel | **Contradicted** | Live test 2026-10-26: it sends a hello frame and ACKs every frame, but answers no GET request. The backup tool uses it only for the update-mode handshake. |
-| CLI `anc on/ambient/off` and `status` battery/firmware | **Contradicted** | Live test 2026-10-26: `anc ambient` printed success, but a readback over the control service showed the mode unchanged. The CLI sends to channel 11 with message type `0x00`. Fix planned. |
+| CLI `anc` and `status` | Device-verified (fixed 2026-10-26) | The old CLI sent to channel 11 with message type `0x00` and had no effect. `xm4_optimizer/transport/sony_control.py` now finds the control service by SDP (`transport/sdp.py`) and reads back every change. Tested: firmware `2.5.0`, battery, noise cancelling, ambient (levels 8, 10, 15; focus on voice on/off), wind noise reduction, off. The headset reports ambient level 1 when level 0 is requested, and keeps its focus-on-voice flag when leaving ambient mode. |
+| RFCOMM channel of the control service | Device-verified | SDP on this unit: control `96cc203e…` = channel 9, `b9b213ce…` = 11, Airoha `8901dfa8…` = 21. The V2 service `956c7b26…` is not advertised. Channels can differ between models and firmware; always resolve by SDP. |
 | `bluetoothctl info` Modalias encodes the firmware version | Partly verified | `usb:v054Cp0D58d0250` on a unit whose MDR firmware string is `2.5.0`. Other versions not checked. |
 | RACE SDK version (`0x0301`) and build version (`0x1E08`) queries | No reply | Live test 2026-10-26 on firmware 2.5.0, after the update-mode handshake: no response, while a page read on the same connection worked. |
 | RACE page-read response layout | Device-verified | 270-byte frame: 6-byte header + 8 bytes (status `0x00`, …, address) + 256 bytes of data. Data starts at byte 14. |
@@ -41,6 +42,13 @@ Last reviewed: 2026-10-26. This file is the single place where claims about the 
 | A bad NVDM checksum cannot bootloop the headset (ROM fallback) | Unverified | No source or test. |
 | Rollback restores the dump "bit-exact" | Unverified | The rollback path only issues page-program commands. NOR flash cannot turn 0 bits back into 1 without an erase, and the emulator in `virtual_device.py` hides this. |
 | `AT+HWPTOOL=COEFSET` / `AT+ENVDM` ATCI commands | Unverified | These strings exist in the firmware v3.0.1 image. Their argument format and whether retail firmware accepts them over RACE are unknown. |
+
+Code facts about the old write paths (confirmed by reading the code after a user report, 2026-10-26):
+
+- `inject` reads the NVDM through raw flash reads (`storage_type=0`) at `0x000DF000`. On a real headset this returns error `0x03` before anything is written.
+- The injector updates an item in place only when the new value has the same size as the old one. The real `ALIGN_*` values are 8 bytes, the injector's are 108 bytes, so it would fall back to re-serializing every active item. It also requires a 128 KB image, while a real backup is 512 KiB.
+- `rollback` accepts only 128 KB images, so it rejects a real 512 KiB backup.
+- `--dry-run --image <real dump>` finds no 108-byte `ALIGN_*` block, falls back to an identity filter, and prints the same table as the README example. The "+7.5 dB" is the computed gain of the synthesized filter, never a measurement on a unit.
 
 Because of these findings, the CLI refuses `inject` and `rollback` on real hardware unless `--allow-unverified-write` is given. `--mock` still runs them against the emulator.
 
@@ -93,5 +101,5 @@ A real dump contains items such as `production/bt_addr`, `production/model_seria
 
 - License: the repository is GPL-3.0-or-later. README and `pyproject.toml` wrongly said MIT.
 - README preset paths pointed to files that do not exist.
-- The README test count (407) was outdated. The suite currently has 416 tests.
+- The README test count (407) was outdated. The suite currently has 427 tests.
 - Turkish documents were translated to English. Agent working notes were removed from the repository; their verified content is summarized here.

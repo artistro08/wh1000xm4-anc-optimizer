@@ -187,10 +187,14 @@ class TestCliEndToEnd:
         # Simulated RFCOMM connection failure
         def mock_fail_socket(*args, **kwargs):
             raise ConnectionRefusedError("Simulated connection error")
-        monkeypatch.setattr("xm4_optimizer.cli.create_rfcomm_socket", mock_fail_socket)
+        monkeypatch.setattr("xm4_optimizer.cli.SonyControlClient.connect", mock_fail_socket)
         res = runner.invoke(cli, ["--mac", "00:11:22:33:44:55", "anc", "status"])
         assert res.exit_code == 1
-        assert "MDR connection error" in res.output
+        assert "Simulated connection error" in res.output
+
+        res = runner.invoke(cli, ["--mac", "00:11:22:33:44:55", "anc", "turbo"])
+        assert res.exit_code == 1
+        assert "unknown anc mode" in res.output
 
     def test_cli_parse_file_directly(self, tmp_path: Path) -> None:
         runner = CliRunner()
