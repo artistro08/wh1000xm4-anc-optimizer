@@ -460,6 +460,7 @@ ARCHITECTURAL DISTINCTION: FLASHER vs. INJECTOR
     parser.add_argument("--rollback", dest="flag_rollback", type=Path, default=None, help="Restore NVDM backup file bit-for-bit.")
     parser.add_argument("--level", type=int, default=None, help="anc ambient: ambient sound level 1..20.")
     parser.add_argument("--voice", action="store_true", default=False, help="anc ambient: enable focus on voice.")
+    parser.add_argument("--allow-unknown-firmware", action="store_true", default=False, help="flash: allow a file whose SHA-256 is not a known official image.")
     parser.add_argument("--allow-unverified-write", action="store_true", default=False, help="Allow inject/rollback on real hardware even though they are not hardware-validated.")
     parser.add_argument("--target-gain", type=float, default=7.5, help="Target 50-800 Hz boost in dB (+6.0 to +9.0).")
     parser.add_argument("--sample-rate", type=float, default=48000.0, help="DSP sampling rate in Hz.")
@@ -506,7 +507,7 @@ def run_cli(
         if not effective_mac:
             print("ERROR: No connected Sony WH-1000XM4 found via Bluetooth. Provide --mac <ADDR> manually.")
             return 1
-        ok = flash_firmware(bd_addr=effective_mac, fw_path=Path(subarg))
+        ok = flash_firmware(bd_addr=effective_mac, fw_path=Path(subarg), allow_unknown=ns.allow_unknown_firmware)
         return 0 if ok else 1
 
     if subcmd == "anc":

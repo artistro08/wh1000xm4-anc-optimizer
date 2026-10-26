@@ -18,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from xm4_optimizer.firmware import identify_firmware
 from xm4_optimizer.transport.rfcomm_socket import create_rfcomm_socket
 
 HEAD = 0x15
@@ -133,7 +134,7 @@ def mdr_worker(s_mdr: socket.socket, stop_event: threading.Event):
             break
 
 
-def flash_firmware(bd_addr: str, fw_path: Path) -> bool:
+def flash_firmware(bd_addr: str, fw_path: Path, allow_unknown: bool = False) -> bool:
     """Uploads signed Sony firmware binary directly to headphones over Bluetooth."""
     if not fw_path.exists():
         print(f"Error: Firmware file {fw_path} not found!")
@@ -142,6 +143,15 @@ def flash_firmware(bd_addr: str, fw_path: Path) -> bool:
     fw_bytes = fw_path.read_bytes()
     fw_len = len(fw_bytes)
     print(f"Loaded Firmware: {fw_path.name} ({fw_len:,} bytes)")
+    known = identify_firmware(fw_bytes)
+    if known is not None:
+        print(f"Identified: official {known.model} ({known.model_id}) firmware {known.version}")
+    elif not allow_unknown:
+        print("Error: this file is not a known official WH-1000XM4 image (SHA-256 not in xm4_optimizer/firmware.py).")
+        print("       Refusing to flash. Pass --allow-unknown-firmware only if you are sure it is an official image.")
+        return False
+    else:
+        print("WARNING: unknown firmware image, flashing anyway because --allow-unknown-firmware was given.")
     print(f"Connecting to WH-1000XM4 ({bd_addr})...")
 
     # Connect MDR on Channel 11
@@ -263,9 +273,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Direct Bluetooth RFCOMM Flasher for Sony WH-1000XM4")
     parser.add_argument("--mac", required=True, help="Bluetooth MAC address of the headphones (e.g. AC:80:0A:2E:45:80)")
     parser.add_argument("--firmware", required=True, type=Path, help="Path to signed Sony firmware .bin file")
+    parser.add_argument("--allow-unknown-firmware", action="store_true", help="Flash even if the file's SHA-256 is not a known official image")
     args = parser.parse_args()
 
-    ok = flash_firmware(args.mac, args.firmware)
+    ok = flash_firmware(args.mac, args.firmware, allow_unknown=args.allow_unknown_firmware)
     sys.exit(0 if ok else 1)
 
 

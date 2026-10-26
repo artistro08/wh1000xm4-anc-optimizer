@@ -64,7 +64,7 @@ Because of these findings, the CLI refuses `inject` and `rollback` on real hardw
 | Official firmware v2.5.0 can be flashed over Bluetooth with `tools/flash_firmware.py`, downgrading from v3.0.1 | Device-verified | 2026-10-25: 5,452 pages (1,395,504 bytes) programmed, integrity check `0x1C01` passed, commit `0x1C02`, device rebooted. |
 | After the downgrade, ANC sounded stronger and the hiss was gone | User-reported | No measurement. |
 | Sony reduced ANC by 4–6 dB in later firmware | Unverified | No measurement or source. Treat it as a hypothesis. |
-| Brick risk is "none" with official firmware | Unverified | No source. The flasher does not yet check the input file against known hashes (planned). |
+| Brick risk is "none" with official firmware | Unverified | No source. Since 2026-10-26 the flasher refuses files whose SHA-256 is not one of the five known official WH-1000XM4 images (`xm4_optimizer/firmware.py`) unless `--allow-unknown-firmware` is given. |
 
 ### Where the v2.5.0 file comes from
 
@@ -106,5 +106,5 @@ A real dump contains items such as `production/bt_addr`, `production/model_seria
 
 - License: the repository is GPL-3.0-or-later. README and `pyproject.toml` wrongly said MIT.
 - README preset paths pointed to files that do not exist.
-- The README test count (407) was outdated. The suite currently has 427 tests.
+- The README test count (407) was outdated. The suite currently has 430 tests.
 - Turkish documents were translated to English. Agent working notes were removed from the repository; their verified content is summarized here.

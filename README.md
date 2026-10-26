@@ -64,7 +64,7 @@ SHA-1   97529f0f6630238e77ce76bfc6766aa5616e78e7
 SHA-256 ee2a4b60c5f322d56fd9e6ea51778cbbc847f816781c385f40d45959555ac508
 ```
 
-Check the hash before you flash:
+The flasher checks the file's SHA-256 against the five known official WH-1000XM4 images (2.5.0, 2.6.0, 2.7.1, 2.9.0, 3.0.1, listed in `xm4_optimizer/firmware.py`) and refuses anything else. You can also check it yourself:
 
 ```sh
 sha256sum UPG_2.5.0_20210413_enc.*.bin
@@ -115,7 +115,7 @@ xm4_optimizer/   Python package and CLI (python3 -m xm4_optimizer)
 tools/           backup_nvdm.py, flash_firmware.py, Steam Audio download and PipeWire scripts
 aerospatial/     C++ spatial audio prototype (Steam Audio + PipeWire)
 presets/         EQ presets
-tests/           427 Python tests (emulator, parser fuzzing, DSP); C++ tests live in aerospatial/tests
+tests/           430 Python tests (emulator, parser fuzzing, DSP); C++ tests live in aerospatial/tests
 docs/            Documentation
 ```
 
