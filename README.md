@@ -52,8 +52,8 @@ xm4_anc_optimizer/
 │   ├── DSP_ACOUSTIC_THEORY.md      # Bilinear transform, Q28 error bounds, Schur-Cohn stability proofs
 │   └── WIRE_PROTOCOLS.md           # Sony MDR v1/v2 (Ch 11) & Airoha RACE/ATCI (Ch 21) wire specifications
 ├── presets/
-│   ├── Sony_WF-1000XM4_SuperReview_3D_Spatial.json # EasyEffects 3D Spatial + Super* Review EQ preset
-│   └── Sony_WF-1000XM4_ANC_on_SuperReview_EQ.txt  # Equalizer APO parametric profile
+│   ├── Sony_WH-1000XM4_SuperReview_3D_Spatial.json # EasyEffects 3D Spatial + Super* Review EQ preset
+│   └── Sony_WH-1000XM4_ANC_on_SuperReview_EQ.txt  # Equalizer APO parametric profile
 ├── aerospatial/
 │   ├── include/                    # C++20 AeroSpatialEngine & PipeWireBridge headers
 │   ├── src/                        # Valve Steam Audio C-API wrapper & PipeWire RT DSP sink
@@ -159,13 +159,13 @@ For immediate pristine acoustic balance (eliminating the bloated 200 Hz bass hum
 * **Linux (EasyEffects):**
   ```sh
   # Copy preset to EasyEffects output folder
-  cp presets/Sony_WF-1000XM4_SuperReview_3D_Spatial.json ~/.var/app/com.github.wwmm.easyeffects/data/easyeffects/output/
+  cp presets/Sony_WH-1000XM4_SuperReview_3D_Spatial.json ~/.var/app/com.github.wwmm.easyeffects/data/easyeffects/output/
 
   # Load preset directly
-  flatpak run --command=easyeffects com.github.wwmm.easyeffects -l Sony_WF-1000XM4_SuperReview_3D_Spatial
+  flatpak run --command=easyeffects com.github.wwmm.easyeffects -l Sony_WH-1000XM4_SuperReview_3D_Spatial
   ```
 * **Windows (Equalizer APO):**
-  Import `Sony_WF-1000XM4_ANC_on_SuperReview_EQ.txt` into the Equalizer APO Configuration Editor.
+  Import `Sony_WH-1000XM4_ANC_on_SuperReview_EQ.txt` into the Equalizer APO Configuration Editor.
 
 **6. Instant Rollback / Factory Restore**
 
