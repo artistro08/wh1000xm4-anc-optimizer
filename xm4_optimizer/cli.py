@@ -1,6 +1,6 @@
 """Command-Line Interface for Sony WH-1000XM4 Unified Hardware Platform.
 
-Provides a unified, hardware-proven CLI for the Sony WH-1000XM4:
+Unofficial CLI for the Sony WH-1000XM4. Evidence levels for each feature: docs/STATUS.md.
 1. Subcommands:
    - `xm4-optimizer backup [output.bin]`       : Pull full 512 KB NVDM calibration backup over Bluetooth RFCOMM
    - `xm4-optimizer flash <firmware.bin>`      : Flash official Sony firmware directly over Bluetooth RFCOMM
@@ -9,9 +9,9 @@ Provides a unified, hardware-proven CLI for the Sony WH-1000XM4:
    - `xm4-optimizer parse [input.bin]`        : Parse 512KB/128KB NVDM calibration dump and CXD90050 items
    - `xm4-optimizer optimize --target-gain 7.5`: Synthesize low-hiss Q4.28 ANC Biquad IIR filter
    - `xm4-optimizer dry-run --target-gain 7.5` : Zero-byte simulation barrier (writes 0 bytes)
-   - `xm4-optimizer inject --target-gain 7.5`  : Safe injection with automatic backup and readback verification
-   - `xm4-optimizer verify --target-gain 7.5`  : Bit-exact flash and live DSP register verification
-   - `xm4-optimizer rollback <backup.bin>`     : Bit-exact NVDM partition restore
+   - `xm4-optimizer inject --target-gain 7.5`  : Emulator only (--mock); disabled on hardware, model contradicted by a real dump
+   - `xm4-optimizer verify --target-gain 7.5`  : Emulator only; readback check for the injector model
+   - `xm4-optimizer rollback <backup.bin>`     : Emulator only (--mock); disabled on hardware
    - `xm4-optimizer status`                    : Display Bluetooth connection, battery, and firmware status
 
 2. Top-level flag workflows (backwards-compatible with tests):
@@ -418,22 +418,20 @@ ARCHITECTURAL DISTINCTION: FLASHER vs. INJECTOR
 1. `xm4-optimizer flash <firmware.bin>` (Full-System FOTA Flasher):
    - Scope: Replaces entire system firmware (~1.4 MB - 4.0 MB) over Bluetooth RFCOMM (Ch 11 & 21).
    - Flash Action: Erases staging flash blocks (CMD_ERASE 0x0404) and writes official signed binary.
-   - Security: Enforces hardware RSA-2048 & SHA-256 eFuse integrity checks. Only official Sony-signed
-     binaries are accepted (e.g. downgrading from v3.0.1 to v2.5.0). Arbitrary code is rejected.
+   - Integrity: the headset runs its own integrity check (0x1C01) before commit. Use official Sony
+     images only and compare their hash first (see README). Device-verified once: v3.0.1 -> v2.5.0.
    - Headset reboots automatically on commit.
 
 2. `xm4-optimizer inject --target-gain <dB>` (Calibration Parameter Injector):
-   - Scope: Surgically modifies ONLY the 108-byte CXD90050 Biquad IIR filter inside NVDM Partition 6.
-   - Flash Action: ZERO firmware code partitions are erased or modified. Writes in-place with 16-bit
-     Airoha running checksums.
-   - Safety: Strictly validated with open-unit-circle pole stability (|p| < 1.0), pre-flight 512 KB
-     backup snapshot, and automatic instant rollback on any verification mismatch.
-   - ROM Fallback: If NVDM checksum ever fails, MT2811 automatically falls back to ROM defaults.
+   - Status: DISABLED on real hardware. It targets a 108-byte DNC/ALIGN_* biquad item that does not
+     exist on a real WH-1000XM4 (there ALIGN_* are 8-byte values under group CXD90050).
+   - Runs against the in-memory emulator with --mock. --allow-unverified-write overrides the block.
+   - Page writes without erase cannot restore 0 -> 1 bits; rollback is not proven. See docs/STATUS.md.
 ====================================================================================================
 """
     parser = argparse.ArgumentParser(
         prog="xm4-optimizer",
-        description="Sony WH-1000XM4 Unified Hardware Platform (NVDM Backup, Firmware Flasher, 3D Spatial Audio [Experimental], ANC Injector, MDR Control).",
+        description="Unofficial Sony WH-1000XM4 tools (NVDM backup and parser, firmware flasher, ANC control, experimental spatial audio). Not affiliated with Sony.",
         epilog=epilog_text,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -444,9 +442,10 @@ ARCHITECTURAL DISTINCTION: FLASHER vs. INJECTOR
     parser.add_argument("--backup", dest="flag_backup", type=Path, default=None, help="Backup NVDM calibration image to path.")
     parser.add_argument("--parse", dest="flag_parse", action="store_true", help="Parse and display NVDM calibration items and checksums.")
     parser.add_argument("--optimize", dest="flag_optimize", action="store_true", help="Synthesize optimal Biquad IIR ANC filter coefficients.")
-    parser.add_argument("--inject", dest="flag_inject", action="store_true", help="[INJECTOR] Safely inject synthesized 108B filter to NVDM with pre-flight backup and verify readback.")
+    parser.add_argument("--inject", dest="flag_inject", action="store_true", help="[INJECTOR, emulator only] Inject the synthesized filter into the emulated 108B NVDM model.")
     parser.add_argument("--verify", dest="flag_verify", action="store_true", help="Verify bit-exact flash and DSP register readback.")
     parser.add_argument("--rollback", dest="flag_rollback", type=Path, default=None, help="Restore NVDM backup file bit-for-bit.")
+    parser.add_argument("--allow-unverified-write", action="store_true", default=False, help="Allow inject/rollback on real hardware even though they are not hardware-validated.")
     parser.add_argument("--target-gain", type=float, default=7.5, help="Target 50-800 Hz boost in dB (+6.0 to +9.0).")
     parser.add_argument("--sample-rate", type=float, default=48000.0, help="DSP sampling rate in Hz.")
     parser.add_argument("--filter-id", type=int, default=FILTER_ID_ALIGN_FF_L, help="CXD90050 filter ID (0..3).")
@@ -521,6 +520,17 @@ def run_cli(
         except Exception as e:
             print(f"ERROR: Real hardware backup failed: {e}")
             return 1
+
+    # The inject/rollback write paths model a 108-byte DNC/ALIGN_* biquad item that does not
+    # match a real WH-1000XM4 NVDM dump (see docs/STATUS.md), so refuse them on hardware.
+    wants_write = subcmd in ("inject", "rollback") or ns.flag_inject or ns.flag_rollback is not None
+    if wants_write and not ns.mock and custom_transport is None and not ns.allow_unverified_write:
+        print(
+            "ERROR: inject/rollback are not validated on real hardware and are disabled.\n"
+            "       Their NVDM model does not match a real WH-1000XM4 dump (see docs/STATUS.md).\n"
+            "       Use --mock to simulate, or --allow-unverified-write if you accept the risk."
+        )
+        return 2
 
     # Connect transport for remaining workflows
     transport = _create_transport(

@@ -210,3 +210,21 @@ class TestCliEndToEnd:
         assert res.exit_code == 0
         for cmd in ("backup", "flash", "anc", "status", "parse", "optimize", "dry-run", "inject", "verify", "rollback"):
             assert cmd in res.output
+
+
+class TestCliHardwareWriteGate:
+    """inject/rollback must refuse to touch real hardware without an explicit override."""
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["inject", "--target-gain", "7.5"],
+            ["--inject", "--target-gain", "7.5"],
+            ["rollback", "backup.bin"],
+            ["--rollback", "backup.bin"],
+        ],
+    )
+    def test_write_commands_blocked_without_mock(self, argv) -> None:
+        res = CliRunner().invoke(cli, argv)
+        assert res.exit_code == 2, res.output
+        assert "disabled" in res.output
