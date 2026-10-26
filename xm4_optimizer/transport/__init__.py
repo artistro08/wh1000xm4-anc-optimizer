@@ -56,6 +56,7 @@ from xm4_optimizer.transport.rfcomm_socket import (
     DEFAULT_TIMEOUT_S,
     DeviceDisconnectedError,
     DeviceTransport,
+    find_connected_xm4_mac,
     FlashOperationError,
     NVDM_PARTITION_BASE,
     NVDM_PARTITION_SIZE,
@@ -73,6 +74,7 @@ __all__ = [
     "RfcommSocket",
     "VirtualXM4Device",
     "read_nvdm_partition",
+    "find_connected_xm4_mac",
     # Constants
     "DEFAULT_MDR_CHANNEL",
     "DEFAULT_RACE_CHANNEL",

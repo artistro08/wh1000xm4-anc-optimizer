@@ -100,6 +100,18 @@ def calculate_data_item_hash(group_name: str, item_name: str) -> int:
     return h
 
 
+def airoha_c_checksum(chk: int, buf: bytes) -> int:
+    """Airoha hardware 16-bit interleaved accumulator checksum across binary slice."""
+    b0 = chk & 0xFF
+    b1 = (chk >> 8) & 0xFF
+    for i, b in enumerate(buf):
+        if i & 1:
+            b1 = (b1 + b) & 0xFF
+        else:
+            b0 = (b0 + b) & 0xFF
+    return (b1 << 8) | b0
+
+
 def calculate_data_item_checksum(
     header_1_to_19: bytes,
     group_name_bytes: bytes,

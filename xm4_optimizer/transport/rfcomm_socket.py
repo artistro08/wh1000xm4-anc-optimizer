@@ -32,6 +32,28 @@ NVDM_PARTITION_BASE: int = 0x000DF000
 NVDM_PARTITION_SIZE: int = 0x20000  # 128 KB (512 pages of 256 bytes)
 
 
+def find_connected_xm4_mac() -> Optional[str]:
+    """Auto-detects connected Sony WH-1000XM4 Bluetooth MAC address via bluetoothctl."""
+    import re
+    import subprocess
+    try:
+        out = subprocess.check_output(["bluetoothctl", "devices", "Connected"], text=True)
+        for line in out.splitlines():
+            m = re.search(r"Device\s+([0-9A-Fa-f:]{17})\s+(.*)", line)
+            if m:
+                mac, name = m.group(1), m.group(2)
+                if "1000xm4" in name.lower() or "wh-" in name.lower():
+                    return mac
+        lines = [l for l in out.splitlines() if "Device " in l]
+        if len(lines) == 1:
+            m = re.search(r"Device\s+([0-9A-Fa-f:]{17})", lines[0])
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
 # --- Exception Hierarchy ---
 
 

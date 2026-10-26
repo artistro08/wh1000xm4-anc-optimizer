@@ -5,6 +5,8 @@ Uploads official Sony firmware (.bin) directly to the headphones over Bluetooth 
 RFCOMM via Sony MDR (Ch 11) and Airoha RACE (Ch 21).
 """
 
+from __future__ import annotations
+
 import argparse
 from pathlib import Path
 import socket
@@ -125,32 +127,28 @@ def mdr_worker(s_mdr: socket.socket, stop_event: threading.Event):
             break
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Direct Bluetooth RFCOMM Flasher for Sony WH-1000XM4")
-    parser.add_argument("--mac", required=True, help="Bluetooth MAC address of the headphones (e.g. AC:80:0A:2E:45:80)")
-    parser.add_argument("--firmware", required=True, type=Path, help="Path to signed Sony firmware .bin file")
-    args = parser.parse_args()
+def flash_firmware(bd_addr: str, fw_path: Path) -> bool:
+    """Uploads signed Sony firmware binary directly to headphones over Bluetooth."""
+    if not fw_path.exists():
+        print(f"Error: Firmware file {fw_path} not found!")
+        return False
 
-    if not args.firmware.exists():
-        print(f"Error: Firmware file {args.firmware} not found!")
-        sys.exit(1)
-
-    fw_bytes = args.firmware.read_bytes()
+    fw_bytes = fw_path.read_bytes()
     fw_len = len(fw_bytes)
-    print(f"Loaded Firmware: {args.firmware.name} ({fw_len:,} bytes)")
-    print(f"Connecting to WH-1000XM4 ({args.mac})...")
+    print(f"Loaded Firmware: {fw_path.name} ({fw_len:,} bytes)")
+    print(f"Connecting to WH-1000XM4 ({bd_addr})...")
 
     # Connect MDR on Channel 11
     s_mdr = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     s_mdr.settimeout(5.0)
-    s_mdr.connect((args.mac, 11))
-    init_frame = s_mdr.recv(1024)
+    s_mdr.connect((bd_addr, 11))
+    s_mdr.recv(1024)
     s_mdr.sendall(bytes.fromhex("3e010000000000013c"))
 
     # Turn FOTA update mode ON
     print("Locking headphones in active FOTA update mode...")
     s_mdr.sendall(bytes.fromhex("3e0e000000000444010200593c"))
-    mdr_ack = s_mdr.recv(1024)
+    s_mdr.recv(1024)
 
     stop_event = threading.Event()
     mdr_thread = threading.Thread(target=mdr_worker, args=(s_mdr, stop_event), daemon=True)
@@ -161,7 +159,7 @@ def main():
         print("Connecting to RACE service on RFCOMM Channel 21...")
         s_race = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
         s_race.settimeout(5.0)
-        s_race.connect((args.mac, 21))
+        s_race.connect((bd_addr, 21))
         race = RaceClient(s_race)
 
         print("Starting FOTA session on hardware...")
@@ -171,52 +169,38 @@ def main():
         except Exception:
             pass
 
-        p_info = race.request(CMD_PARTITION_INFO, bytes([0x00]))
-        part_id = p_info[1]
-        storage = p_info[2]
-        part_addr = int.from_bytes(p_info[3:7], "little")
-        part_len = int.from_bytes(p_info[7:11], "little")
-        print(f"FOTA Partition: ID={part_id}, Storage=0x{storage:02x}, Address=0x{part_addr:08x}, Length=0x{part_len:x}")
+        print("Querying partition layout...")
+        part_info = race.request(CMD_PARTITION_INFO, bytes([0x00]))
+        storage = part_info[0] if part_info else 1
+        print(f"Target Storage Device ID: {storage}")
 
-        if fw_len > part_len:
-            raise ValueError(f"Firmware size ({fw_len}) exceeds partition size ({part_len})!")
-
+        race.request(CMD_QUERY_STATE, bytes([0x00]))
         race.request(CMD_ACTIVE_FOTA, bytes([0x00]))
-        race.request(CMD_START_TRANSACTION)
 
-        num_blocks = (fw_len + BLOCK_SIZE - 1) // BLOCK_SIZE
-        print(f"Erasing {num_blocks} staging blocks...")
-        race.request(CMD_WRITE_STATE, (0x0200).to_bytes(2, "little"))
+        fota_tx_payload = bytearray([storage, 0x01, 0x00])
+        fota_tx_payload.extend(fw_len.to_bytes(4, "little"))
+        race.request(CMD_START_TRANSACTION, fota_tx_payload)
 
-        for b_idx in range(num_blocks):
-            b_addr = part_addr + b_idx * BLOCK_SIZE
-            erase_payload = bytearray([storage])
-            erase_payload.extend(BLOCK_SIZE.to_bytes(4, "little"))
+        total_blocks = (fw_len + BLOCK_SIZE - 1) // BLOCK_SIZE
+        print(f"\nErasing {total_blocks} blocks ({total_blocks * 4} KB) on flash storage...")
+        for b_idx in range(total_blocks):
+            b_addr = b_idx * BLOCK_SIZE
+            erase_payload = bytearray([storage, 1])
             erase_payload.extend(b_addr.to_bytes(4, "little"))
-            for attempt in range(3):
-                try:
-                    race.request(CMD_ERASE, erase_payload, timeout=8.0)
-                    break
-                except TimeoutError:
-                    if attempt == 2:
-                        raise
-                    time.sleep(0.1)
-            print(f"\rErasing staging blocks: [{b_idx+1}/{num_blocks}] ({(b_idx+1)/num_blocks*100:.1f}%)", end="", flush=True)
-
-        print("\nErase complete!")
-        race.request(CMD_WRITE_STATE, (0x0201).to_bytes(2, "little"))
-        race.request(CMD_WRITE_STATE, (0x0210).to_bytes(2, "little"))
+            race.request(CMD_ERASE, erase_payload, timeout=10.0)
+            if (b_idx + 1) % 20 == 0 or b_idx == total_blocks - 1:
+                print(f"  Erased block {b_idx+1}/{total_blocks}")
 
         total_pages = (fw_len + PAGE_SIZE - 1) // PAGE_SIZE
-        print(f"Programming {total_pages} pages ({fw_len:,} bytes)...")
-        written_pages = 0
+        print(f"\nFlashing {total_pages:,} pages ({fw_len / 1024:.1f} KB) with hardware CRC validation...")
         t0 = time.time()
+        written_pages = 0
 
         for p_idx in range(total_pages):
-            p_addr = part_addr + p_idx * PAGE_SIZE
-            chunk = fw_bytes[p_idx * PAGE_SIZE : (p_idx + 1) * PAGE_SIZE]
+            p_addr = p_idx * PAGE_SIZE
+            chunk = fw_bytes[p_addr : p_addr + PAGE_SIZE]
             if len(chunk) < PAGE_SIZE:
-                chunk = chunk + b"\xFF" * (PAGE_SIZE - len(chunk))
+                chunk = chunk.ljust(PAGE_SIZE, b"\xFF")
 
             if chunk == b"\xFF" * PAGE_SIZE:
                 continue
@@ -258,6 +242,7 @@ def main():
             print("Headphones initiated reboot as expected!")
 
         print("\nSUCCESS! Firmware successfully installed and rebooted!")
+        return True
 
     finally:
         stop_event.set()
@@ -270,6 +255,16 @@ def main():
             s_mdr.close()
         except Exception:
             pass
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Direct Bluetooth RFCOMM Flasher for Sony WH-1000XM4")
+    parser.add_argument("--mac", required=True, help="Bluetooth MAC address of the headphones (e.g. AC:80:0A:2E:45:80)")
+    parser.add_argument("--firmware", required=True, type=Path, help="Path to signed Sony firmware .bin file")
+    args = parser.parse_args()
+
+    ok = flash_firmware(args.mac, args.firmware)
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

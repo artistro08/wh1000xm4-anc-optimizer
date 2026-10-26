@@ -18,6 +18,7 @@ from xm4_optimizer.nvdm.cxd90050 import (
     OptimizerParam,
 )
 from xm4_optimizer.nvdm.item import (
+    airoha_c_checksum,
     calculate_data_item_checksum,
     calculate_data_item_hash,
     CHECKSUM_SIZE,
@@ -158,18 +159,19 @@ def parse_nvdm_image(
     image_bytes: bytes,
     strict: bool = False,
 ) -> NvdmPartition:
-    """Parses a full 128KB Airoha NVDM partition image."""
-    if len(image_bytes) != NVDM_PARTITION_SIZE:
+    """Parses an Airoha NVDM partition image (supports 128KB mock and 512KB hardware dumps)."""
+    if len(image_bytes) not in (NVDM_PARTITION_SIZE, 512 * 1024):
         raise NvdmCorruptError(
-            f"Invalid NVDM partition size: {len(image_bytes)} bytes (expected {NVDM_PARTITION_SIZE})"
+            f"Invalid NVDM partition size: {len(image_bytes)} bytes (expected {NVDM_PARTITION_SIZE} or 524288)"
         )
 
+    num_pebs = len(image_bytes) // PEB_SIZE
     pebs: List[PebHeader] = []
     all_items: List[NvdmItem] = []
     corrupted_items: List[NvdmItem] = []
 
-    # 1. Parse all 32 PEBs
-    for pnum in range(TOTAL_PEBS):
+    # 1. Parse all PEBs (32 for legacy mock or 128 for real hardware)
+    for pnum in range(num_pebs):
         start = pnum * PEB_SIZE
         peb_bytes = image_bytes[start : start + PEB_SIZE]
         peb_hdr = parse_peb_header(peb_bytes, pnum=pnum)
@@ -214,20 +216,24 @@ def parse_nvdm_image(
             chk_b = peb_bytes[curr : curr + CHECKSUM_SIZE]
             stored_chk = struct.unpack(CHECKSUM_STRUCT, chk_b)[0]
 
-            # Verify Checksum (status byte excluded)
-            calc_chk = calculate_data_item_checksum(
+            # Decode Strings & Verify Hash (strip null bytes if stored by C firmware)
+            g_str = group_b.rstrip(b"\x00").decode("ascii", errors="replace")
+            n_str = name_b.rstrip(b"\x00").decode("ascii", errors="replace")
+            calc_h = calculate_data_item_hash(g_str, n_str)
+            h_valid = (calc_h == hdr.hash_name) or (calculate_data_item_hash(group_b.decode("ascii", errors="replace"), name_b.decode("ascii", errors="replace")) == hdr.hash_name)
+
+            # Verify Checksum (support real Airoha hardware accumulator and legacy concatenation)
+            c1 = airoha_c_checksum(0, peb_bytes[offset + 1 : offset + DATA_ITEM_HEADER_SIZE])
+            c2 = airoha_c_checksum(c1, group_b + name_b)
+            real_chk = airoha_c_checksum(c2, val_b)
+            legacy_chk = calculate_data_item_checksum(
                 peb_bytes[offset + 1 : offset + DATA_ITEM_HEADER_SIZE],
                 group_b,
                 name_b,
                 val_b,
             )
-            chk_valid = calc_chk == stored_chk
-
-            # Decode Strings & Verify Hash
-            g_str = group_b.decode("ascii", errors="replace")
-            n_str = name_b.decode("ascii", errors="replace")
-            calc_h = calculate_data_item_hash(g_str, n_str)
-            h_valid = calc_h == hdr.hash_name
+            chk_valid = (stored_chk == real_chk) or (stored_chk == legacy_chk)
+            calc_chk = real_chk if stored_chk == real_chk else legacy_chk
 
             item = NvdmItem(
                 header=hdr,
