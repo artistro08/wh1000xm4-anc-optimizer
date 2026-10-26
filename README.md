@@ -26,6 +26,23 @@ Python 3.10+, depends only on `numpy` and the standard library (native Linux `AF
 
 ---
 
+## Flasher vs. Injector: Which tool should you use?
+
+It is critical to understand the architectural distinction between **flashing** and **injecting**:
+
+| Dimension | `flash` (Firmware Flasher) | `inject` (Calibration Injector) |
+|---|---|---|
+| **Target Storage** | SPI Flash Code Partitions (`~1.4 MB – 4.0 MB`) | NVDM Calibration Partition 6 (`108 bytes`) |
+| **Protocol** | Airoha FOTA state machine (`0x1Cxx`) over MDR Ch 11 + RACE Ch 21 | Airoha RACE NVDM direct write over Ch 21 |
+| **Sector Erase** | **Yes** — erases full 4 KB flash blocks (`CMD_ERASE 0x0404`) | **No** — writes strictly in-place to calibration keys |
+| **Signature Verification**| **Hardware RSA-2048 & SHA-256** verified against SoC eFuses | **None** — validated via 16-bit Airoha running checksum |
+| **Allowed Files** | **Official Sony-signed `.bin` firmware only** (e.g. v2.5.0, v3.0.1) | Synthesized Q4.28 Biquad IIR filter coefficients |
+| **Brick / Bootloop Risk**| None with official firmware (A/B staging with safety abort). Unsigned files are rejected upfront (`0x02`). | **Zero** — ROM fallback (`nvdm_audio_coef_default.h`) + automated pre-flight snapshot & rollback |
+| **Duration** | ~2 – 3 minutes (reboots headphones on commit) | ~1 second (applies immediately on DSP reboot) |
+| **Primary Purpose** | Upgrading/downgrading base firmware (e.g. reversing Sony's v3.0 nerf) | Tuning ANC filter curve and eliminating low-frequency drone/hiss |
+
+---
+
 ## Project Structure
 
 ```text

@@ -411,18 +411,40 @@ def _run_status_workflow(mac: Optional[str]) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Constructs the argument parser supporting unified subcommands and legacy flags."""
+    epilog_text = """
+====================================================================================================
+ARCHITECTURAL DISTINCTION: FLASHER vs. INJECTOR
+====================================================================================================
+1. `xm4-optimizer flash <firmware.bin>` (Full-System FOTA Flasher):
+   - Scope: Replaces entire system firmware (~1.4 MB - 4.0 MB) over Bluetooth RFCOMM (Ch 11 & 21).
+   - Flash Action: Erases staging flash blocks (CMD_ERASE 0x0404) and writes official signed binary.
+   - Security: Enforces hardware RSA-2048 & SHA-256 eFuse integrity checks. Only official Sony-signed
+     binaries are accepted (e.g. downgrading from v3.0.1 to v2.5.0). Arbitrary code is rejected.
+   - Headset reboots automatically on commit.
+
+2. `xm4-optimizer inject --target-gain <dB>` (Calibration Parameter Injector):
+   - Scope: Surgically modifies ONLY the 108-byte CXD90050 Biquad IIR filter inside NVDM Partition 6.
+   - Flash Action: ZERO firmware code partitions are erased or modified. Writes in-place with 16-bit
+     Airoha running checksums.
+   - Safety: Strictly validated with open-unit-circle pole stability (|p| < 1.0), pre-flight 512 KB
+     backup snapshot, and automatic instant rollback on any verification mismatch.
+   - ROM Fallback: If NVDM checksum ever fails, MT2811 automatically falls back to ROM defaults.
+====================================================================================================
+"""
     parser = argparse.ArgumentParser(
         prog="xm4-optimizer",
         description="Sony WH-1000XM4 Unified Hardware Platform (NVDM Backup, Firmware Flasher, 3D Spatial Audio [Experimental], ANC Injector, MDR Control).",
+        epilog=epilog_text,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--mac", type=str, default=None, help="Bluetooth MAC address of the headphones (auto-detected if omitted).")
     parser.add_argument("--mock", action="store_true", default=False, help="Use VirtualXM4Device hardware emulator for test simulation.")
     parser.add_argument("--no-mock", dest="mock", action="store_false")
-    parser.add_argument("--dry-run", dest="flag_dry_run", action="store_true", help="Run zero-byte dry-run simulation and exit 0.")
+    parser.add_argument("--dry-run", dest="flag_dry_run", action="store_true", help="Run zero-byte dry-run simulation and exit 0 (DRY-RUN BARRIER ACTIVE).")
     parser.add_argument("--backup", dest="flag_backup", type=Path, default=None, help="Backup NVDM calibration image to path.")
-    parser.add_argument("--parse", dest="flag_parse", action="store_true", help="Parse and display NVDM items.")
-    parser.add_argument("--optimize", dest="flag_optimize", action="store_true", help="Synthesize optimal Biquad IIR ANC filter.")
-    parser.add_argument("--inject", dest="flag_inject", action="store_true", help="Safely inject synthesized filter and verify readback.")
+    parser.add_argument("--parse", dest="flag_parse", action="store_true", help="Parse and display NVDM calibration items and checksums.")
+    parser.add_argument("--optimize", dest="flag_optimize", action="store_true", help="Synthesize optimal Biquad IIR ANC filter coefficients.")
+    parser.add_argument("--inject", dest="flag_inject", action="store_true", help="[INJECTOR] Safely inject synthesized 108B filter to NVDM with pre-flight backup and verify readback.")
     parser.add_argument("--verify", dest="flag_verify", action="store_true", help="Verify bit-exact flash and DSP register readback.")
     parser.add_argument("--rollback", dest="flag_rollback", type=Path, default=None, help="Restore NVDM backup file bit-for-bit.")
     parser.add_argument("--target-gain", type=float, default=7.5, help="Target 50-800 Hz boost in dB (+6.0 to +9.0).")
@@ -430,7 +452,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--filter-id", type=int, default=FILTER_ID_ALIGN_FF_L, help="CXD90050 filter ID (0..3).")
     parser.add_argument("--backup-out", type=Path, default=None, help="Optional pre-flight backup file path.")
     parser.add_argument("--image", dest="image_path", type=Path, default=None, help="Optional NVDM binary image path.")
-    parser.add_argument("positional", nargs="*", help="Subcommand (backup, flash, spatial, anc, status, parse, optimize, dry-run, inject, verify, rollback) and arguments.")
+    parser.add_argument(
+        "positional",
+        nargs="*",
+        help="Subcommand: backup (dump NVDM), flash (full official FOTA firmware install), inject (surgical 108B NVDM write), dry-run, verify, rollback, parse, optimize, anc, spatial, status.",
+    )
     return parser
 
 
