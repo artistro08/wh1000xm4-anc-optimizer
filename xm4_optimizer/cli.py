@@ -342,6 +342,9 @@ def _run_spatial_workflow(
             else:
                 print("[-] AeroSpatial 3D sink is currently INACTIVE.")
                 return 0
+        except FileNotFoundError:
+            print("[-] PipeWire (pw-link) is not installed or unavailable on this system.")
+            return 0
         except Exception as e:
             print(f"Error querying PipeWire: {e}")
             return 1
