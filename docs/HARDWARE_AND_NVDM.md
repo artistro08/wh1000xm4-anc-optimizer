@@ -6,9 +6,12 @@ This document describes what is known about the WH-1000XM4 storage that the tool
 
 | Item | Level | Note |
 |---|---|---|
-| Bluetooth SoC from the Airoha AB155x family (MT2811) | Unverified | The RACE protocol and `AB15/…` NVDM groups fit an Airoha device. Exact part number not confirmed from a teardown or datasheet. |
-| Sony CXD90050 ANC processor ("QN1") | Partly verified | The NVDM contains a `CXD90050` group (section 4). Sony's [product page](https://www.sony-asia.com/electronics/headband-headphones/wh-1000xm4) names the "HD Noise Cancelling Processor QN1" working with a separate Bluetooth audio SoC. That CXD90050 is the QN1's part number is unverified. |
-| 16 MB SPI NOR flash and a fixed partition map (bootloader, FOTA, voice prompts at `0x00510000`) | Unverified | No partition table has been read and published yet. Earlier versions of this document stated this map without evidence. |
+| Bluetooth SoC: MediaTek MT2811 | Verified (teardown) | [52Audio teardown](http://www.52audio.com/archives/54160.html) names the MediaTek MT2811 platform. The RACE protocol, the `AB15/…` NVKEY group and the NVKEY `0x3901` value `"AB1530BLE"` (read live, 2026-10-26) point to an Airoha-derived SDK; the exact relation to Airoha AB155x is unverified. |
+| ANC processor: Sony CXD90050 = "HD Noise Cancelling Processor QN1" | Verified (teardown) | Same teardown. Sony's [product page](https://www.sony-asia.com/electronics/headband-headphones/wh-1000xm4) describes the QN1 working with a separate Bluetooth SoC. |
+| External flash marked `Q128JWYIQ` | Partly verified | Marking from the teardown. A 128 Mbit (16 MB) part is likely from the marking but unverified. |
+| Other ICs: Cirrus Logic CS48L32 audio codec/DSP, Lattice iCE40UL1K FPGA, TI BQ27421 fuel gauge, MPS MP2625B charger, Atmel ATSAMD21J17D touch MCU, barometric pressure sensor marked "344 KS" | Verified (teardown) | Same teardown. Firmware log strings tagged `[AC][StC]` (likely speak-to-chat) mention `CS48L32`; the pressure sensor fits NC Optimizer's `config/nc_atm_value`. |
+| Partition map (bootloader, FOTA, voice prompts at `0x00510000`) | Unverified | No partition table has been read and published yet. |
+| Public schematics or service manual | Not found | FCC ID is likely `AK8WH1000XM4` ([fccid.io](https://fccid.io/AK8WH1000XM4)); the board is reported as HDX-2943. No public schematic was found. |
 
 ## 2. NVDM store as seen over RACE
 
@@ -16,6 +19,8 @@ This document describes what is known about the WH-1000XM4 storage that the tool
 
 - The store is **512 KiB**: 128 physical erase blocks (PEBs) of 4096 bytes, 16 pages of 256 bytes each.
 - Every PEB starts with the `NVDM` magic.
+- The MDR update-mode handshake that `tools/backup_nvdm.py` sends first is **not needed** for these reads: a full 512 KiB read without it took about 70 s on 2026-10-26, and the owner reported that video playback on the headset was not interrupted.
+- NVKEYs (group `AB15`, item name = key ID in hex) can be read with RACE `0x0A00` (payload `<keyID:2 LE><maxLen:2 LE>`, reply `<len:2 LE><data>`), command format from [lx-exe/stealth600-gen3-usb-fix](https://github.com/lx-exe/stealth600-gen3-usb-fix). Four keys read live matched the dump byte for byte.
 - Where this store sits in physical flash is **unknown**. The earlier claim "Partition 6 at `0x000DF000`, 128 KB" is not supported by the working tool.
 
 ## 3. On-disk format
