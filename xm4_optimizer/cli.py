@@ -4,7 +4,7 @@ Provides a unified, hardware-proven CLI for the Sony WH-1000XM4:
 1. Subcommands:
    - `xm4-optimizer backup [output.bin]`       : Pull full 512 KB NVDM calibration backup over Bluetooth RFCOMM
    - `xm4-optimizer flash <firmware.bin>`      : Flash official Sony firmware directly over Bluetooth RFCOMM
-   - `xm4-optimizer spatial [start|stop|status]`: Control PipeWire EasyEffects + AeroSpatial 3D Audio bridge
+   - `xm4-optimizer spatial [start|stop|status]`: Control PipeWire EasyEffects + AeroSpatial 3D Audio bridge [EXPERIMENTAL - ACTIVE DEV]
    - `xm4-optimizer anc [status|on|ambient|off]`: Control ANC modes over Bluetooth MDR protocol (Ch 11)
    - `xm4-optimizer parse [input.bin]`        : Parse 512KB/128KB NVDM calibration dump and CXD90050 items
    - `xm4-optimizer optimize --target-gain 7.5`: Synthesize low-hiss Q4.28 ANC Biquad IIR filter
@@ -12,7 +12,7 @@ Provides a unified, hardware-proven CLI for the Sony WH-1000XM4:
    - `xm4-optimizer inject --target-gain 7.5`  : Safe injection with automatic backup and readback verification
    - `xm4-optimizer verify --target-gain 7.5`  : Bit-exact flash and live DSP register verification
    - `xm4-optimizer rollback <backup.bin>`     : Bit-exact NVDM partition restore
-   - `xm4-optimizer status`                    : Display Bluetooth connection, battery, and spatial pipeline status
+   - `xm4-optimizer status`                    : Display Bluetooth connection, battery, and firmware status
 
 2. Top-level flag workflows (backwards-compatible with tests):
    - `xm4-optimizer --dry-run --target-gain 7.5`
@@ -272,63 +272,6 @@ def _run_rollback_workflow(transport: DeviceTransport, backup_path: Path) -> int
     return 1
 
 
-def _run_spatial_workflow(action: str, app_node: str = "spotify", azimuth: float = 60.0, gain: float = 1.0) -> int:
-    """Manages the PipeWire EasyEffects + AeroSpatial Steam Audio spatial pipeline."""
-    script_path = REPO_ROOT / "tools" / "route_pipewire_app_through_aerospatial.sh"
-    if not script_path.exists():
-        print(f"Error: Routing script not found at {script_path}")
-        return 1
-
-    if action == "status":
-        print("[*] Inspecting PipeWire audio routing topology...")
-        try:
-            links = subprocess.check_output(["pw-link", "-l"], text=True)
-            if "aerospatial_3d_sink" in links:
-                print("[+] AeroSpatial 3D sink is ACTIVE in PipeWire graph:")
-                for line in links.splitlines():
-                    if any(k in line for k in ("aerospatial", "ee_soe", app_node)):
-                        print(f"    {line}")
-                return 0
-            else:
-                print("[-] AeroSpatial 3D sink is currently INACTIVE.")
-                return 0
-        except Exception as e:
-            print(f"Error querying PipeWire: {e}")
-            return 1
-
-    elif action == "stop":
-        print("[*] Stopping AeroSpatial 3D daemon and restoring original routing...")
-        subprocess.run(["pkill", "-f", "aerospatial-daemon"], check=False)
-        time.sleep(0.5)
-        print("[+] AeroSpatial stopped.")
-        return 0
-
-    elif action == "start":
-        print(f"[*] Starting AeroSpatial 3D pipeline for app '{app_node}' (Azimuth: {azimuth}°, Gain: {gain}x)...")
-        cmd = [
-            "bash",
-            str(script_path),
-            app_node,
-            "--azimuth",
-            str(azimuth),
-            "--gain",
-            str(gain),
-        ]
-        proc = subprocess.Popen(cmd)
-        print(f"[+] Started routing script (PID {proc.pid}). Press Ctrl+C in this terminal to stop.")
-        try:
-            return proc.wait()
-        except KeyboardInterrupt:
-            print("\nStopping...")
-            proc.terminate()
-            proc.wait()
-            return 0
-
-    else:
-        print(f"Unknown spatial action '{action}'. Use start, stop, or status.")
-        return 1
-
-
 def _run_anc_workflow(mac: str, mode: str) -> int:
     """Queries or controls ANC modes directly over Bluetooth MDR RFCOMM channel 11."""
     print(f"[*] Connecting to Sony MDR on RFCOMM Channel 11 ({mac})...")
@@ -370,6 +313,68 @@ def _run_anc_workflow(mac: str, mode: str) -> int:
             pass
 
 
+def _run_spatial_workflow(
+    action: str,
+    app_node: str = "spotify",
+    azimuth: float = 60.0,
+    gain: float = 1.0,
+) -> int:
+    """Manages the PipeWire EasyEffects + AeroSpatial Steam Audio spatial pipeline.
+
+    [NOTE: This is an experimental prototype under active development.]
+    """
+    print("[!] NOTE: AeroSpatial 3D Audio Engine is currently an EXPERIMENTAL PROTOTYPE under active development.")
+    script_path = REPO_ROOT / "tools" / "route_pipewire_app_through_aerospatial.sh"
+    if not script_path.exists():
+        print(f"Error: Routing script not found at {script_path}")
+        return 1
+
+    if action == "status":
+        print("[*] Inspecting PipeWire audio routing topology...")
+        try:
+            links = subprocess.check_output(["pw-link", "-l"], text=True)
+            if "aerospatial_3d_sink" in links:
+                print("[+] AeroSpatial 3D sink is ACTIVE in PipeWire graph:")
+                for line in links.splitlines():
+                    if any(k in line for k in ("aerospatial", "ee_soe", app_node)):
+                        print(f"    {line}")
+                return 0
+            else:
+                print("[-] AeroSpatial 3D sink is currently INACTIVE.")
+                return 0
+        except Exception as e:
+            print(f"Error querying PipeWire: {e}")
+            return 1
+
+    elif action == "stop":
+        print("[*] Stopping AeroSpatial 3D daemon and restoring original routing...")
+        subprocess.run(["pkill", "-f", "aerospatial-daemon"], check=False)
+        time.sleep(0.5)
+        print("[+] AeroSpatial stopped.")
+        return 0
+
+    elif action == "start":
+        print(
+            f"[*] Starting AeroSpatial 3D pipeline for app '{app_node}' (Azimuth: {azimuth}°, Gain: {gain}x)..."
+        )
+        cmd = [
+            "bash",
+            str(script_path),
+            app_node,
+            "--azimuth",
+            str(azimuth),
+            "--gain",
+            str(gain),
+        ]
+        proc = subprocess.Popen(cmd)
+        print(f"[+] Started spatial routing process (PID: {proc.pid})")
+        return 0
+
+    else:
+        print(f"Unknown spatial action: '{action}'. Use 'start', 'stop', or 'status'.")
+        return 1
+
+
 def _run_status_workflow(mac: Optional[str]) -> int:
     """Displays system-wide status of WH-1000XM4 hardware and audio graph."""
     print("=" * 65)
@@ -389,13 +394,13 @@ def _run_status_workflow(mac: Optional[str]) -> int:
     except Exception:
         print("  Bluetooth Link        : Query failed")
 
-    # Spatial audio status
+    # Spatial audio status (experimental)
     try:
         pw_out = subprocess.check_output(["pw-link", "-l"], text=True)
         spatial_active = "aerospatial_3d_sink" in pw_out
-        print(f"  AeroSpatial 3D Engine : {'ACTIVE (Route engaged)' if spatial_active else 'INACTIVE'}")
+        print(f"  AeroSpatial 3D Engine : {'ACTIVE (Experimental Prototype)' if spatial_active else 'INACTIVE (Experimental Prototype)'}")
     except Exception:
-        print("  AeroSpatial 3D Engine : PipeWire unavailable")
+        print("  AeroSpatial 3D Engine : PipeWire unavailable (Experimental Prototype)")
 
     print("=" * 65)
     return 0
@@ -405,7 +410,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Constructs the argument parser supporting unified subcommands and legacy flags."""
     parser = argparse.ArgumentParser(
         prog="xm4-optimizer",
-        description="Sony WH-1000XM4 Unified Hardware Platform (NVDM Backup, Firmware Flasher, 3D Spatial Audio, ANC Injector, MDR Control).",
+        description="Sony WH-1000XM4 Unified Hardware Platform (NVDM Backup, Firmware Flasher, 3D Spatial Audio [Experimental], ANC Injector, MDR Control).",
     )
     parser.add_argument("--mac", type=str, default=None, help="Bluetooth MAC address of the headphones (auto-detected if omitted).")
     parser.add_argument("--mock", action="store_true", default=False, help="Use VirtualXM4Device hardware emulator for test simulation.")
